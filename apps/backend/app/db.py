@@ -351,6 +351,10 @@ create table if not exists traslados_puntos (
     check (punto_origen_id <> punto_destino_id)
 );
 
+-- Momento en que quien recibio acepto la declaracion de revision producto
+-- por producto (movil). Null en recepciones anteriores a esa revision obligatoria.
+alter table traslados_puntos add column if not exists declaracion_aceptada_at timestamptz;
+
 create index if not exists idx_traslados_puntos_destino_estado
     on traslados_puntos (punto_destino_id, estado);
 create index if not exists idx_traslados_puntos_origen

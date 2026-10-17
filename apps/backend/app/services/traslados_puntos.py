@@ -380,6 +380,7 @@ async def registrar_recepcion(traslado_id: str, payload: RecepcionTraslado) -> d
                 update traslados_puntos
                 set estado = $2, recibido_por = $3::uuid, recibido_at = now(),
                     novedad = $4, firma_recibe_url = $5,
+                    declaracion_aceptada_at = case when $6 then now() else declaracion_aceptada_at end,
                     novedad_estado = case when $2 = 'recibido_con_novedad' then 'pendiente' else novedad_estado end
                 where id = $1::uuid and estado = 'en_transito'
                 returning *
@@ -389,6 +390,7 @@ async def registrar_recepcion(traslado_id: str, payload: RecepcionTraslado) -> d
                 payload.recibido_por,
                 payload.novedad,
                 payload.firma_recibe_url,
+                payload.declaracion_aceptada,
             )
             if actualizado is None:
                 raise TrasladoYaRecibido("Este traslado ya fue recibido")
@@ -415,6 +417,7 @@ async def registrar_recepcion(traslado_id: str, payload: RecepcionTraslado) -> d
         actor_id=payload.recibido_por,
         sede_id=str(traslado["punto_destino_id"]),
         resultado=nuevo_estado,
+        detalle={"declaracion_aceptada": payload.declaracion_aceptada},
     )
     if nuevo_estado == "recibido_con_novedad":
         await registrar_evento(
@@ -629,6 +632,31 @@ async def listar_traslados_syscafe(
                 item[campo] = str(item[campo])
         resultado.append(item)
     return resultado
+
+
+async def listar_historial(traslado_id: str) -> list[dict]:
+    """Historial de un traslado para el expediente del dashboard: solo los
+    eventos que hizo el punto (creacion, recepcion y novedad), del mas antiguo
+    al mas reciente, con el nombre de quien los hizo y del punto. Sale de `logs`
+    (append-only), no de columnas del traslado."""
+    pool = await get_pool()
+    filas = await pool.fetch(
+        """
+        select l.evento, l."timestamp" as momento, l.resultado, l.detalle,
+            u.nombre as actor_nombre, p.nombre as punto_nombre
+        from logs l
+        left join usuarios_punto u on u.id::text = l.actor_id
+        left join puntos p on p.id::text = l.sede_id
+        where l.entidad_tipo = 'traslado_punto' and l.entidad_id = $1
+            and l.evento in ($2, $3, $4)
+        order by l."timestamp" asc
+        """,
+        traslado_id,
+        EventoLog.TRASLADO_PUNTO_CREADO.value,
+        EventoLog.TRASLADO_PUNTO_RECIBIDO.value,
+        EventoLog.TRASLADO_PUNTO_NOVEDAD.value,
+    )
+    return [dict(fila) for fila in filas]
 
 
 async def listar_actividad(limite: int = 50) -> list[dict]:

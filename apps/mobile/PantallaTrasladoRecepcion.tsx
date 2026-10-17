@@ -39,7 +39,8 @@ type Props = NativeStackScreenProps<TrasladosStackParamList, 'RecepcionTraslado'
 type NavegacionRecepcion = NativeStackNavigationProp<TrasladosStackParamList>;
 
 interface LineaRecepcion {
-  completo: boolean;
+  // null = todavia sin revisar: el punto debe elegir una opcion en cada producto.
+  completo: boolean | null;
   cantidadRecibida: string;
   novedad: string;
 }
@@ -130,7 +131,7 @@ function TarjetaProductoRecepcion({
   const cantidadValida = cantidadEsValida(linea, item);
 
   return (
-    <View style={[styles.tarjeta, estilos.tarjeta, { borderColor: linea.completo ? 'rgba(52,211,153,0.4)' : 'rgba(248,113,113,0.5)' }]}>
+    <View style={[styles.tarjeta, estilos.tarjeta, linea.completo !== null && { borderColor: linea.completo ? 'rgba(52,211,153,0.4)' : 'rgba(248,113,113,0.5)' }]}>
       <View style={estilos.filaProducto}>
         <View style={estilos.cantidadCaja}>
           <Text style={estilos.cantidadTexto}>{item.cantidad}</Text>
@@ -147,22 +148,22 @@ function TarjetaProductoRecepcion({
       <View style={estilos.segmentado}>
         <Pressable
           onPress={() => onElegirCompleto(true)}
-          style={[estilos.opcion, linea.completo && { backgroundColor: 'rgba(52,211,153,0.16)', borderColor: VERDE }]}
+          style={[estilos.opcion, linea.completo === true && { backgroundColor: 'rgba(52,211,153,0.16)', borderColor: VERDE }]}
         >
-          <Ionicons name="checkmark-circle" size={16} color={linea.completo ? VERDE : NEUTRAL_500} />
-          <Text style={[estilos.opcionTexto, linea.completo && { color: VERDE }]}>Llegó completo</Text>
+          <Ionicons name="checkmark-circle" size={16} color={linea.completo === true ? VERDE : NEUTRAL_500} />
+          <Text style={[estilos.opcionTexto, linea.completo === true && { color: VERDE }]}>Llegó completo</Text>
         </Pressable>
         <Pressable
           onPress={() => onElegirCompleto(false)}
-          style={[estilos.opcion, !linea.completo && { backgroundColor: 'rgba(248,113,113,0.14)', borderColor: ROJO }]}
+          style={[estilos.opcion, linea.completo === false && { backgroundColor: 'rgba(248,113,113,0.14)', borderColor: ROJO }]}
         >
-          <Ionicons name="alert-circle" size={16} color={!linea.completo ? ROJO : NEUTRAL_500} />
-          <Text style={[estilos.opcionTexto, !linea.completo && { color: ROJO }]}>Con observación</Text>
+          <Ionicons name="alert-circle" size={16} color={linea.completo === false ? ROJO : NEUTRAL_500} />
+          <Text style={[estilos.opcionTexto, linea.completo === false && { color: ROJO }]}>Con observación</Text>
         </Pressable>
       </View>
 
       {/* Resumen de la observacion ya cargada; tocarlo reabre el modal. */}
-      {!linea.completo ? (
+      {linea.completo === false ? (
         <Pressable
           onPress={onEditarObservacion}
           accessibilityRole="button"
@@ -208,9 +209,9 @@ export default function PantallaTrasladoRecepcion({ route }: Props) {
         setTraslado(t);
         const iniciales: Record<string, LineaRecepcion> = {};
         for (const item of t.items ?? []) {
-          // Por default "llego completo" -- el bodeguero destilda solo las
-          // lineas que de verdad tienen una diferencia.
-          iniciales[item.id] = { completo: true, cantidadRecibida: String(item.cantidad), novedad: '' };
+          // Sin marcar: el punto tiene que revisar y elegir una opcion en cada
+          // producto antes de poder firmar (evidencia de la revision).
+          iniciales[item.id] = { completo: null, cantidadRecibida: String(item.cantidad), novedad: '' };
         }
         setLineas(iniciales);
       })
@@ -241,12 +242,15 @@ export default function PantallaTrasladoRecepcion({ route }: Props) {
     (traslado.items ?? []).every((item) => {
       const linea = lineas[item.id];
       if (!linea) return false;
+      if (linea.completo === null) return false;
       if (linea.completo) return true;
       return cantidadEsValida(linea, item);
     });
 
   const items = traslado?.items ?? [];
-  const conDiferencia = items.filter((item) => lineas[item.id] && !lineas[item.id].completo).length;
+  const conDiferencia = items.filter((item) => lineas[item.id]?.completo === false).length;
+  const revisados = items.filter((item) => lineas[item.id] && lineas[item.id].completo !== null).length;
+  const todosRevisados = items.length > 0 && revisados === items.length;
   const hayNovedadGeneral = novedadGeneral.trim() !== '';
 
   const confirmar = async (firma: string) => {
@@ -268,6 +272,7 @@ export default function PantallaTrasladoRecepcion({ route }: Props) {
         novedad: novedadGeneral.trim() || undefined,
         firma_recibe_url: subida.url,
         recibido_por: usuario.id,
+        declaracion_aceptada: true,
       });
       navigation.reset({ index: 0, routes: [{ name: 'InicioTraslados' }] });
     } catch (err) {
@@ -335,17 +340,16 @@ export default function PantallaTrasladoRecepcion({ route }: Props) {
 
           <View style={estilos.encabezado}>
             <Text style={styles.etiquetaSeccion}>Confirmar lo recibido</Text>
-            {/* Contador en vivo: cuantos productos estan ok y cuantos no. */}
+            {/* Contador en vivo: cuantos productos se revisaron y cuantos tienen observacion. */}
             <View style={[estilos.contador, conDiferencia > 0 && { backgroundColor: 'rgba(248,113,113,0.14)' }]}>
               <Ionicons
-                name={conDiferencia > 0 ? 'alert-circle' : 'checkmark-circle'}
+                name={conDiferencia > 0 ? 'alert-circle' : todosRevisados ? 'checkmark-circle' : 'ellipse-outline'}
                 size={14}
-                color={conDiferencia > 0 ? ROJO : VERDE}
+                color={conDiferencia > 0 ? ROJO : todosRevisados ? VERDE : NEUTRAL_400}
               />
-              <Text style={[estilos.contadorTexto, { color: conDiferencia > 0 ? ROJO : VERDE }]}>
-                {conDiferencia > 0
-                  ? `${conDiferencia} con observación`
-                  : `${items.length} de ${items.length} completos`}
+              <Text style={[estilos.contadorTexto, { color: conDiferencia > 0 ? ROJO : todosRevisados ? VERDE : NEUTRAL_400 }]}>
+                {`Revisados ${revisados} de ${items.length}`}
+                {conDiferencia > 0 ? ` · ${conDiferencia} con observación` : ''}
               </Text>
             </View>
           </View>
@@ -370,6 +374,9 @@ export default function PantallaTrasladoRecepcion({ route }: Props) {
           {/* Novedad general y firma juntas, como Observaciones + Firma en el
               despacho: es lo ultimo antes de confirmar. */}
           <View style={styles.tarjeta}>
+            <Text style={estilos.declaracion}>
+              Confirmo que revisé cada producto. Los reclamos posteriores quedan a cargo de este punto.
+            </Text>
             <CampoFirma
               titulo="Firma de quien recibe"
               valor={firmaRecibeBase64}
@@ -406,7 +413,9 @@ export default function PantallaTrasladoRecepcion({ route }: Props) {
             ) : null}
             {!lineasValidas ? (
               <Text style={styles.textoErrorInline}>
-                Revisa las cantidades marcadas en rojo antes de firmar.
+                {todosRevisados
+                  ? 'Revisa las cantidades marcadas en rojo antes de firmar.'
+                  : 'Marca cada producto como «Llegó completo» o «Con observación» para poder firmar.'}
               </Text>
             ) : (
               <Text style={styles.previewSubtexto}>
@@ -488,6 +497,7 @@ const estilos = StyleSheet.create({
     backgroundColor: 'rgba(52,211,153,0.14)',
   },
   contadorTexto: { fontSize: 12, fontFamily: FUENTE_BODY_SEMI },
+  declaracion: { fontSize: 13, lineHeight: 18, fontFamily: FUENTE_BODY_SEMI, color: TEXTO_PRIMARIO },
   // Mas compacta que la tarjeta base: cada producto ocupa menos alto.
   tarjeta: { gap: 10, borderWidth: 1.5, padding: 12, borderRadius: 16 },
   filaProducto: { flexDirection: 'row', alignItems: 'center', gap: 10 },

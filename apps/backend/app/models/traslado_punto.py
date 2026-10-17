@@ -108,6 +108,9 @@ class RecepcionTraslado(BaseModel):
     firma_recibe_url: str
     # usuario_punto de quien recibe (bodega destino).
     recibido_por: str
+    # El movil la manda en true al firmar tras revisar cada producto. Opcional
+    # para no romper builds viejos de la app (que no la envian).
+    declaracion_aceptada: bool = False
 
 
 class SolucionNovedad(BaseModel):

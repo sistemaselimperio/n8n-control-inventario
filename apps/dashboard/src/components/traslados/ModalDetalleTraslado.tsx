@@ -1,12 +1,20 @@
 "use client";
 
 // Detalle de un traslado: datos, numero Syscafe (editable para quien puede
-// asignarlo), productos con lo enviado vs. lo recibido, novedad y fotos.
+// asignarlo), productos con lo enviado vs. lo recibido (con su estado por
+// producto), constancia de recepcion, historial, novedad y fotos.
 
 import { useState } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { asignarSyscafeDashboard, fetchTrasladoDetalle, type TrasladoDetalle } from "@/lib/api";
+import {
+  asignarSyscafeDashboard,
+  fetchHistorialTraslado,
+  fetchTrasladoDetalle,
+  type EventoHistorialTraslado,
+  type ItemTrasladoDetalle,
+  type TrasladoDetalle,
+} from "@/lib/api";
 import { claseBoton, ErrorConReintento, Icono, Pildora, type TonoPildora } from "@/components/ui";
 import { Folio } from "@/components/entregas/Folio";
 import { empresaTalonario, ESTADOS, fechaCorta, fechaHora, referencia } from "./compartido";
@@ -26,6 +34,8 @@ export function ModalDetalleTraslado({
   const { data: t, error, mutate } = useSWR(["traslado-detalle", id], () => fetchTrasladoDetalle(id), {
     refreshInterval: 5000,
   });
+  // El historial se carga al abrir el modal (no se refresca solo: son eventos ya registrados).
+  const { data: historial } = useSWR(["traslado-historial", id], () => fetchHistorialTraslado(id));
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -141,9 +151,12 @@ export function ModalDetalleTraslado({
           </div>
 
           <div className="flex flex-col gap-2">
-            <h4 className="text-sm font-semibold text-ink">Productos</h4>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold text-ink">Productos</h4>
+              <ResumenRecepcion items={t.items} />
+            </div>
             <div className="overflow-x-auto rounded-md border border-line">
-              <table className="w-full min-w-[520px] text-left text-sm">
+              <table className="w-full min-w-[640px] text-left text-sm">
                 <thead className="border-b border-line text-xs text-muted">
                   <tr>
                     <th className="px-3 py-2 font-medium">Producto</th>
@@ -152,6 +165,7 @@ export function ModalDetalleTraslado({
                     <th className="px-3 py-2 text-right font-medium">Enviada</th>
                     <th className="px-3 py-2 text-right font-medium">Recibida</th>
                     <th className="px-3 py-2 font-medium">Vence</th>
+                    <th className="px-3 py-2 font-medium">Estado</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
@@ -175,6 +189,9 @@ export function ModalDetalleTraslado({
                         <td className="px-3 py-2 text-xs text-muted">
                           {it.fecha_vencimiento ? fechaCorta(it.fecha_vencimiento) : "—"}
                         </td>
+                        <td className="px-3 py-2">
+                          <EstadoProducto it={it} />
+                        </td>
                       </tr>
                     );
                   })}
@@ -184,11 +201,122 @@ export function ModalDetalleTraslado({
           </div>
 
           {t.observaciones ? <Dato etiqueta="Observaciones">{t.observaciones}</Dato> : null}
+          <ConstanciaRecepcion t={t} />
           <NovedadYSolucion t={t} />
+          <Historial eventos={historial} />
           <Imagenes t={t} />
         </>
       )}
     </ModalBase>
+  );
+}
+
+type EstadoItem = "bien" | "diferencia" | "sin_recibir";
+
+// Una linea esta "bien" si llego lo enviado; "con diferencia" si llego distinto
+// o trae novedad; "sin recibir" mientras el traslado no se haya recibido.
+function estadoItem(it: ItemTrasladoDetalle): EstadoItem {
+  if (it.cantidad_recibida === null) return "sin_recibir";
+  if (it.cantidad_recibida !== it.cantidad || Boolean(it.novedad?.trim())) return "diferencia";
+  return "bien";
+}
+
+function EstadoProducto({ it }: { it: ItemTrasladoDetalle }) {
+  const estado = estadoItem(it);
+  if (estado === "sin_recibir") return <Pildora tono="neutro">Sin recibir</Pildora>;
+  if (estado === "bien") return <Pildora tono="ok">Llegó bien</Pildora>;
+  const faltan = it.cantidad - (it.cantidad_recibida ?? 0);
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <Pildora tono="error">Con diferencia</Pildora>
+      {faltan > 0 ? (
+        <span className="text-xs text-danger-fg">
+          Faltan {faltan} {faltan === 1 ? "unidad" : "unidades"}
+        </span>
+      ) : null}
+      {it.novedad ? <span className="text-xs text-danger-fg">{it.novedad}</span> : null}
+    </div>
+  );
+}
+
+function ResumenRecepcion({ items }: { items: ItemTrasladoDetalle[] }) {
+  const estados = items.map(estadoItem);
+  if (estados.every((e) => e === "sin_recibir")) return null;
+  const bien = estados.filter((e) => e === "bien").length;
+  const conDiferencia = estados.filter((e) => e === "diferencia").length;
+  const sinRecibir = estados.filter((e) => e === "sin_recibir").length;
+  const partes = [`${bien} bien`, `${conDiferencia} con diferencia`];
+  if (sinRecibir > 0) partes.push(`${sinRecibir} sin recibir`);
+  return <span className="text-xs text-muted">{partes.join(" · ")}</span>;
+}
+
+// Respaldo de la recepcion: quien recibio, cuando, la firma y si acepto la
+// declaracion de revision producto por producto (solo recepciones nuevas).
+function ConstanciaRecepcion({ t }: { t: TrasladoDetalle }) {
+  if (!t.recibido_at) return null;
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-line bg-surface-2 p-3">
+      <h4 className="text-sm font-semibold text-ink">Constancia de recepción</h4>
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="flex flex-1 flex-col gap-1 text-sm text-ink">
+          <p>
+            Recibió <span className="font-medium">{t.recibido_por_nombre ?? "—"}</span>
+            {t.punto_destino_nombre ? ` en ${t.punto_destino_nombre}` : ""}, {fechaHora(t.recibido_at)}.
+          </p>
+          {t.declaracion_aceptada_at ? (
+            <p className="text-xs text-muted">
+              Aceptó revisión producto por producto el {fechaHora(t.declaracion_aceptada_at)}.
+            </p>
+          ) : (
+            <p className="text-xs text-muted">Recepción anterior a la revisión obligatoria.</p>
+          )}
+        </div>
+        {t.firma_recibe_url ? (
+          <a
+            href={t.firma_recibe_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex flex-col gap-1 text-xs text-muted hover:text-ink"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element -- URL publica de Storage, igual que en Imagenes */}
+            <img
+              src={t.firma_recibe_url}
+              alt="Firma de quien recibe"
+              loading="lazy"
+              className="h-16 w-32 rounded-md border border-line bg-white object-contain"
+            />
+            Firma recibe
+          </a>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+const ETIQUETA_EVENTO: Record<string, string> = {
+  traslado_punto_creado: "Traslado enviado",
+  traslado_punto_recibido: "Traslado recibido",
+  traslado_punto_novedad: "Novedad registrada",
+};
+
+// Linea de tiempo de lo que hizo el punto (no incluye acciones del dashboard).
+function Historial({ eventos }: { eventos: EventoHistorialTraslado[] | undefined }) {
+  if (!eventos || eventos.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <h4 className="text-sm font-semibold text-ink">Historial</h4>
+      <ol className="flex flex-col gap-2 border-l border-line pl-4">
+        {eventos.map((e, i) => (
+          <li key={`${e.evento}-${i}`} className="flex flex-col">
+            <span className="text-sm text-ink">{ETIQUETA_EVENTO[e.evento] ?? e.evento}</span>
+            <span className="text-xs text-muted">
+              {e.actor_nombre ?? "—"}
+              {e.punto_nombre ? ` · ${e.punto_nombre}` : ""} · {fechaHora(e.momento)}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 

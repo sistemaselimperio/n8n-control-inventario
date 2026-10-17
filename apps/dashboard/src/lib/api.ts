@@ -505,6 +505,7 @@ export interface TrasladoDetalle {
   created_at: string;
   recibido_por_nombre: string | null;
   recibido_at: string | null;
+  declaracion_aceptada_at: string | null;
   foto_talonario_url: string | null;
   firma_despacha_url: string | null;
   firma_transporta_url: string | null;
@@ -513,6 +514,20 @@ export interface TrasladoDetalle {
 }
 
 export const fetchTrasladoDetalle = (id: string) => getJson<TrasladoDetalle>(`/traslados-puntos/${id}`);
+
+// Evento del punto sobre un traslado (GET /traslados-puntos/{id}/historial):
+// envio, recepcion y novedad, del mas antiguo al mas reciente.
+export interface EventoHistorialTraslado {
+  evento: string;
+  momento: string;
+  resultado: string;
+  detalle: Record<string, unknown>;
+  actor_nombre: string | null;
+  punto_nombre: string | null;
+}
+
+export const fetchHistorialTraslado = (id: string) =>
+  getJson<EventoHistorialTraslado[]>(`/traslados-puntos/${id}/historial`);
 
 // Feed de actividad reciente del panel de traslados, en lenguaje simple.
 export interface ActividadTraslado {

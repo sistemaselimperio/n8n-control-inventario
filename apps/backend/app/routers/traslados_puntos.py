@@ -49,6 +49,7 @@ from app.services.traslados_puntos import (
     crear_traslado,
     extraer_talonario,
     listar_actividad,
+    listar_historial,
     listar_traslados_syscafe,
     registrar_recepcion,
     resolver_novedad,
@@ -508,6 +509,13 @@ async def obtener_traslado(traslado_id: UUID) -> dict:
         "select * from traslado_punto_items where traslado_id = $1::uuid order by id", str(traslado_id)
     )
     return _serializar_traslado(dict(row), [dict(i) for i in items])
+
+
+@router.get("/traslados-puntos/{traslado_id}/historial")
+async def historial_traslado(traslado_id: UUID) -> list[dict]:
+    """Eventos del punto sobre este traslado (envio, recepcion, novedad) para el
+    expediente del dashboard. Sin auth, igual que GET /traslados-puntos/{id}."""
+    return await listar_historial(str(traslado_id))
 
 
 @router.post("/traslados-puntos/{traslado_id}/recepcion")

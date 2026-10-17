@@ -1052,7 +1052,7 @@ export interface ItemRecepcionEnvio {
  */
 export async function registrarRecepcion(
   trasladoId: string,
-  payload: { items: ItemRecepcionEnvio[]; novedad?: string; firma_recibe_url: string; recibido_por: string }
+  payload: { items: ItemRecepcionEnvio[]; novedad?: string; firma_recibe_url: string; recibido_por: string; declaracion_aceptada?: boolean }
 ): Promise<Traslado> {
   const res = await fetchConTimeout(`${API_BASE_URL}/traslados-puntos/${trasladoId}/recepcion`, {
     method: 'POST',
