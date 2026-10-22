@@ -35,6 +35,7 @@ from app.services.talonarios import (
     anular_siguiente_hoja,
     configurar_talonario,
     obtener_talonarios_activos,
+    resumen_talonarios_puntos,
 )
 from app.services.traslados_puntos import (
     ConsecutivoDuplicado,
@@ -389,6 +390,13 @@ async def obtener_talonario_punto(punto_id: UUID) -> dict:
     `talonario` (el primero) se mantiene para la app vieja."""
     talonarios = await obtener_talonarios_activos(str(punto_id))
     return {"talonarios": talonarios, "talonario": talonarios[0] if talonarios else None}
+
+
+@router.get("/talonarios-puntos/resumen")
+async def resumen_talonarios() -> list[dict]:
+    """Todos los puntos con sus talonarios activos (lista vacia = sin
+    configurar). Lo usa el dashboard en /traslados."""
+    return await resumen_talonarios_puntos()
 
 
 @router.post("/talonarios-puntos/configurar", status_code=201)

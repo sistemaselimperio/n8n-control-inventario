@@ -540,6 +540,26 @@ export interface ActividadTraslado {
 export const fetchActividadTraslados = (limite = 50) =>
   getJson<ActividadTraslado[]>(`/traslados-puntos/actividad?limite=${limite}`);
 
+// Talonarios activos de cada punto (GET /talonarios-puntos/resumen): uno por
+// letra; un punto con la lista vacia todavia no configuro ninguno.
+export interface TalonarioActivo {
+  id: string;
+  letra: string;
+  rango: string;
+  siguiente_hoja: string | null;
+  quedan: number;
+  agotado: boolean;
+  umbral_aviso: number;
+}
+
+export interface ResumenTalonarioPunto {
+  punto_id: string;
+  punto_nombre: string;
+  talonarios: TalonarioActivo[];
+}
+
+export const fetchResumenTalonarios = () => getJson<ResumenTalonarioPunto[]>("/talonarios-puntos/resumen");
+
 export const fetchPuntosPublicos = () => getJson<{ id: string; nombre: string; codigo: string | null }[]>("/puntos");
 
 // Guarda (o borra, con null) el numero Syscafe de un traslado. Requiere sesion

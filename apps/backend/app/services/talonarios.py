@@ -110,6 +110,27 @@ async def obtener_talonarios_activos(punto_id: str) -> list[dict]:
         return [await _estado(conn, fila) for fila in filas]
 
 
+async def resumen_talonarios_puntos() -> list[dict]:
+    """Todos los puntos con sus talonarios activos (uno por letra), para ver
+    desde el dashboard que puntos ya configuraron cada talonario. Un punto
+    sin talonarios trae la lista vacia."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        puntos = await conn.fetch("select id, nombre from puntos order by nombre")
+        filas = await conn.fetch("select * from talonarios_punto where estado = 'activo' order by letra")
+        por_punto: dict[str, list[dict]] = {}
+        for fila in filas:
+            por_punto.setdefault(str(fila["punto_id"]), []).append(await _estado(conn, fila))
+        return [
+            {
+                "punto_id": str(p["id"]),
+                "punto_nombre": p["nombre"],
+                "talonarios": por_punto.get(str(p["id"]), []),
+            }
+            for p in puntos
+        ]
+
+
 def elegir_por_letra(talonarios: list[dict], letra: str | None) -> dict | None:
     """Talonario de `talonarios` cuya letra coincide con `letra` (sin importar
     mayusculas), o None."""
