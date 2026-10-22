@@ -41,7 +41,6 @@ import {
 import { ModalAnulada } from "@/components/traslados/ModalAnulada";
 import { ModalDetalleTraslado } from "@/components/traslados/ModalDetalleTraslado";
 import { CajaSyscafe } from "@/components/traslados/CajaSyscafe";
-import { TablaTalonarios } from "@/components/traslados/TablaTalonarios";
 
 // Texto sin tildes ni mayusculas, para comparar busquedas.
 const normalizar = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
@@ -144,8 +143,6 @@ export default function TrasladosPage() {
         titulo="Traslados"
         descripcion="Revisa cada traslado de talonario y registra su número en Syscafe (por ejemplo NBR-945). Los pendientes aparecen primero; haz clic en una fila para ver el detalle."
       />
-
-      <TablaTalonarios />
 
       {/* Filtros y tabla en una sola superficie: los filtros arriba, separados
           de las filas por una regla. */}
