@@ -18,10 +18,12 @@ let ultimoPrefijo = "";
 // Ancho aproximado de la caja, solo para no salirse por la derecha.
 const ANCHO_CAJA = 230;
 
-// "NBR-945" -> ["NBR", "945"]; si no tiene ese formato, todo va al prefijo.
+// "NBR-945" -> ["NBR", "945"], "TB9-120" -> ["TB9", "120"]; si no tiene ese
+// formato, todo va al prefijo.
 function separar(numero: string | null): [string, string] {
   if (!numero) return [ultimoPrefijo, ""];
-  const m = /^([A-Z]+)-?(\d+)$/.exec(numero.trim());
+  const texto = numero.trim();
+  const m = /^([A-Z][A-Z0-9]*)-(\d+)$/.exec(texto) ?? /^([A-Z]+)(\d+)$/.exec(texto);
   return m ? [m[1], m[2]] : [numero, ""];
 }
 
@@ -105,7 +107,16 @@ export function CajaSyscafe({
         <input
           autoFocus={!inicialPrefijo}
           value={prefijo}
-          onChange={(e) => setPrefijo(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 6))}
+          // Letras y numeros (ej. TB9), empezando por letra y hasta 4: lo que acepta el backend.
+          onChange={(e) =>
+            setPrefijo(
+              e.target.value
+                .toUpperCase()
+                .replace(/[^A-Z0-9]/g, "")
+                .replace(/^\d+/, "")
+                .slice(0, 4),
+            )
+          }
           onKeyDown={alEnter}
           placeholder="NBR"
           aria-label="Prefijo"
