@@ -16,6 +16,7 @@ import {
   listarTrasladosSyscafe,
   type ActividadTraslado,
   type FilaTrasladoSyscafe,
+  type TipoTraslado,
 } from "@/lib/api";
 import {
   claseBoton,
@@ -36,6 +37,7 @@ import {
   fechaCorta,
   fechaHora,
   letraTalonario,
+  ORIGEN_DIRECTO,
   referencia,
 } from "@/components/traslados/compartido";
 import { ModalAnulada } from "@/components/traslados/ModalAnulada";
@@ -55,6 +57,7 @@ function textoBusqueda(f: FilaTrasladoSyscafe): string {
       f.numero_syscafe,
       f.numero_talonario,
       f.punto_origen_nombre,
+      f.tipo_traslado === "directo" ? ORIGEN_DIRECTO : "",
       f.punto_destino_nombre,
       f.anulado_por_nombre,
       f.motivo,
@@ -77,6 +80,8 @@ export default function TrasladosPage() {
   // Letra del talonario ("A", "V") para ver solo una empresa; "" = todas.
   const [empresa, setEmpresa] = useState("");
   const [soloPendientes, setSoloPendientes] = useState(false);
+  // Clase de traslado: entre puntos o llegada directa del proveedor; "" = todos.
+  const [tipo, setTipo] = useState<"" | TipoTraslado>("");
   const [fechaDesde, setFechaDesde] = useState("");
   const [fechaHasta, setFechaHasta] = useState("");
   const [busqueda, setBusqueda] = useState("");
@@ -115,9 +120,12 @@ export default function TrasladosPage() {
   const porEstado = useMemo(
     () =>
       (filas ?? []).filter(
-        (f) => (!estado || f.estado === estado) && (!empresa || letraTalonario(f) === empresa),
+        (f) =>
+          (!estado || f.estado === estado) &&
+          (!empresa || letraTalonario(f) === empresa) &&
+          (!tipo || f.tipo_traslado === tipo),
       ),
-    [filas, estado, empresa],
+    [filas, estado, empresa, tipo],
   );
   const visibles = useMemo(() => {
     const q = normalizar(busquedaDiferida);
@@ -291,6 +299,21 @@ export default function TrasladosPage() {
             />
             Solo pendientes de Syscafe
           </label>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="traslados-tipo" className="text-xs font-medium text-muted">
+              Tipo
+            </label>
+            <select
+              id="traslados-tipo"
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value as "" | TipoTraslado)}
+              className={claseCampo}
+            >
+              <option value="">Todos</option>
+              <option value="entre_puntos">Entre puntos</option>
+              <option value="directo">Llega directo</option>
+            </select>
+          </div>
           <p className="ml-auto text-sm tabular-nums text-muted" aria-live="polite">
             {isLoading
               ? "Cargando…"
@@ -417,7 +440,7 @@ export default function TrasladosPage() {
                           (fila.punto_origen_nombre ?? "—")
                         ) : (
                           <>
-                            {fila.punto_origen_nombre ?? "—"}
+                            {fila.tipo_traslado === "directo" ? ORIGEN_DIRECTO : (fila.punto_origen_nombre ?? "—")}
                             <Icono nombre="derecha" className="mx-1.5 inline h-3.5 w-3.5 align-text-bottom text-muted" />
                             <span className="sr-only">a</span>
                             {fila.punto_destino_nombre ?? "—"}

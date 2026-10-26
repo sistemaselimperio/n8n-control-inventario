@@ -333,7 +333,10 @@ create unique index if not exists puntos_codigo_key on puntos (codigo);
 create table if not exists traslados_puntos (
     id uuid primary key,
     consecutivo bigserial unique,
-    punto_origen_id uuid not null references puntos(id),
+    -- Null solo en las llegadas directas del proveedor (tipo = 'directo'); la
+    -- regla origen/tipo vive en el check traslados_puntos_origen_tipo_check
+    -- (mas abajo), que tambien sustituye al viejo origen <> destino.
+    punto_origen_id uuid references puntos(id),
     punto_destino_id uuid not null references puntos(id),
     transportador_nombre text not null default '',
     fecha date not null,
@@ -347,8 +350,7 @@ create table if not exists traslados_puntos (
     recibido_por uuid references usuarios_punto(id),
     recibido_at timestamptz,
     novedad text,
-    created_at timestamptz not null default now(),
-    check (punto_origen_id <> punto_destino_id)
+    created_at timestamptz not null default now()
 );
 
 -- Momento en que quien recibio acepto la declaracion de revision producto
@@ -490,10 +492,47 @@ create table if not exists talonario_hojas_anuladas (
 -- funcion (su numero_talonario era libre y puede estar repetido), por eso el
 -- indice unico es parcial: solo vigila los traslados que si traen talonario_id.
 alter table traslados_puntos add column if not exists talonario_id uuid references talonarios_punto(id);
-create unique index if not exists traslados_puntos_talonario_numero_key
-    on traslados_puntos (punto_origen_id, numero_talonario) where talonario_id is not null;
+-- La hoja se vigila por talonario y no por punto origen: en una llegada directa
+-- no hay origen y la hoja es del talonario del punto que recibe. Un talonario
+-- pertenece a un solo punto, asi que para los traslados entre puntos es
+-- equivalente al indice anterior (punto_origen_id, numero_talonario).
+create unique index if not exists traslados_puntos_talonario_hoja_key
+    on traslados_puntos (talonario_id, numero_talonario) where talonario_id is not null;
+drop index if exists traslados_puntos_talonario_numero_key;
 create index if not exists idx_traslados_puntos_talonario
     on traslados_puntos (talonario_id) where talonario_id is not null;
+
+-- Llegada directa del proveedor a un punto: tipo 'directo', sin punto de origen
+-- ni firmas de quien despacha/transporta; solo firma quien recibe. Se crea ya en
+-- 'recibido' (o 'recibido_con_novedad'). Los traslados existentes quedan como
+-- 'entre_puntos'.
+alter table traslados_puntos add column if not exists tipo text not null default 'entre_puntos';
+alter table traslados_puntos drop constraint if exists traslados_puntos_tipo_check;
+alter table traslados_puntos add constraint traslados_puntos_tipo_check
+    check (tipo in ('entre_puntos', 'directo'));
+alter table traslados_puntos alter column punto_origen_id drop not null;
+-- Sustituye el check inline original (origen <> destino), que Postgres nombro
+-- automaticamente (traslados_puntos_check); se busca por definicion para no
+-- depender del nombre.
+do $$
+declare
+    r record;
+begin
+    for r in
+        select conname from pg_constraint
+        where conrelid = 'traslados_puntos'::regclass and contype = 'c'
+          and conname <> 'traslados_puntos_origen_tipo_check'
+          and pg_get_constraintdef(oid) like '%punto_origen_id <> punto_destino_id%'
+    loop
+        execute format('alter table traslados_puntos drop constraint %I', r.conname);
+    end loop;
+end $$;
+alter table traslados_puntos drop constraint if exists traslados_puntos_origen_tipo_check;
+alter table traslados_puntos add constraint traslados_puntos_origen_tipo_check
+    check (
+        (tipo = 'entre_puntos' and punto_origen_id is not null and punto_origen_id <> punto_destino_id)
+        or (tipo = 'directo' and punto_origen_id is null)
+    );
 
 -- Numero del traslado en Syscafe (sistema contable, ej. "NBR-945"): lo registra
 -- Supervision para cruzarlo con la hoja del talonario (ver

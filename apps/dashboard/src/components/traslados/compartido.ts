@@ -11,6 +11,9 @@ export const ESTADOS: Record<string, { texto: string; tono: TonoPildora }> = {
   anulada: { texto: "Anulada", tono: "neutro" },
 };
 
+// Texto del origen cuando la mercancia llega directo del proveedor (sin punto de origen).
+export const ORIGEN_DIRECTO = "Llega directo";
+
 export function referencia(
   fila: Pick<FilaTrasladoSyscafe, "tipo" | "numero_talonario" | "talonario_id" | "consecutivo">,
 ): string {

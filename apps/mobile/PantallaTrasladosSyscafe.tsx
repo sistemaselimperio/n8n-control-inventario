@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { fetchPuntos, listarTrasladosSyscafe, type FilaSyscafe, type Punto } from './api';
+import { fetchPuntos, listarTrasladosSyscafe, origenTraslado, type FilaSyscafe, type Punto } from './api';
 import { mensajeError } from './errorMessages';
 import ModalSelectorPunto from './ModalSelectorPunto';
 import { AvisoRol } from './ResumenTraslado';
@@ -76,7 +76,7 @@ function TarjetaSyscafe({ fila, onPress }: { fila: FilaSyscafe; onPress: () => v
         </View>
 
         <Text style={estilos.lugarTexto} numberOfLines={1}>
-          {fila.punto_origen_nombre ?? '—'}
+          {origenTraslado({ tipo: fila.tipo_traslado, punto_origen_nombre: fila.punto_origen_nombre })}
           {!anulada ? (
             <>
               {' '}

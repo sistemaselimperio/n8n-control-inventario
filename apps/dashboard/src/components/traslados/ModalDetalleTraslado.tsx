@@ -17,7 +17,7 @@ import {
 } from "@/lib/api";
 import { claseBoton, ErrorConReintento, Icono, Pildora, type TonoPildora } from "@/components/ui";
 import { Folio } from "@/components/entregas/Folio";
-import { empresaTalonario, ESTADOS, fechaCorta, fechaHora, referencia } from "./compartido";
+import { empresaTalonario, ESTADOS, fechaCorta, fechaHora, ORIGEN_DIRECTO, referencia } from "./compartido";
 import { Dato, ModalBase } from "./ModalBase";
 
 export function ModalDetalleTraslado({
@@ -55,12 +55,14 @@ export function ModalDetalleTraslado({
     }
   };
 
+  // Llega directo: no hay quien despache ni transporte, solo firma quien recibe.
+  const directo = t?.tipo === "directo";
   const info = t ? (ESTADOS[t.estado] ?? { texto: t.estado, tono: "neutro" as TonoPildora }) : null;
 
   return (
     <ModalBase
-      etiqueta={t ? `Traslado ${referencia({ tipo: "traslado", ...t })}` : "Traslado"}
-      titulo={t ? <Folio tipo="Traslado" numero={referencia({ tipo: "traslado", ...t })} tamano="modal" /> : "Traslado"}
+      etiqueta={t ? `Traslado ${referencia({ ...t, tipo: "traslado" })}` : "Traslado"}
+      titulo={t ? <Folio tipo="Traslado" numero={referencia({ ...t, tipo: "traslado" })} tamano="modal" /> : "Traslado"}
       onCerrar={onCerrar}
       pildora={info ? <Pildora tono={info.tono}>{info.texto}</Pildora> : undefined}
     >
@@ -75,15 +77,15 @@ export function ModalDetalleTraslado({
       ) : (
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {empresaTalonario({ tipo: "traslado", ...t }) ? (
-              <Dato etiqueta="Empresa">{empresaTalonario({ tipo: "traslado", ...t })}</Dato>
+            {empresaTalonario({ ...t, tipo: "traslado" }) ? (
+              <Dato etiqueta="Empresa">{empresaTalonario({ ...t, tipo: "traslado" })}</Dato>
             ) : null}
             <Dato etiqueta="Origen y destino">
-              {t.punto_origen_nombre ?? "—"} <Icono nombre="derecha" className="mx-0.5 inline h-3.5 w-3.5 align-text-bottom text-muted" />
+              {directo ? ORIGEN_DIRECTO : (t.punto_origen_nombre ?? "—")} <Icono nombre="derecha" className="mx-0.5 inline h-3.5 w-3.5 align-text-bottom text-muted" />
               <span className="sr-only">a</span> {t.punto_destino_nombre ?? "—"}
             </Dato>
             <Dato etiqueta="Fecha">{fechaCorta(t.fecha)}</Dato>
-            <Dato etiqueta="Transportador">{t.transportador_nombre || "—"}</Dato>
+            {directo ? null : <Dato etiqueta="Transportador">{t.transportador_nombre || "—"}</Dato>}
             <Dato etiqueta="Número Syscafe">
               {editando ? (
                 <span className="flex flex-wrap items-center gap-2">
@@ -297,6 +299,7 @@ const ETIQUETA_EVENTO: Record<string, string> = {
   traslado_punto_creado: "Traslado enviado",
   traslado_punto_recibido: "Traslado recibido",
   traslado_punto_novedad: "Novedad registrada",
+  llegada_directa_registrada: "Llegada directa registrada",
 };
 
 // Linea de tiempo de lo que hizo el punto (no incluye acciones del dashboard).
@@ -350,8 +353,9 @@ function NovedadYSolucion({ t }: { t: TrasladoDetalle }) {
 function Imagenes({ t }: { t: TrasladoDetalle }) {
   const imagenes = [
     { url: t.foto_talonario_url, etiqueta: "Talonario" },
-    { url: t.firma_despacha_url, etiqueta: "Firma despacha" },
-    { url: t.firma_transporta_url, etiqueta: "Firma transporta" },
+    // En una llegada directa solo firma quien recibe.
+    { url: t.tipo === "directo" ? null : t.firma_despacha_url, etiqueta: "Firma despacha" },
+    { url: t.tipo === "directo" ? null : t.firma_transporta_url, etiqueta: "Firma transporta" },
     { url: t.firma_recibe_url, etiqueta: "Firma recibe" },
   ].filter((i): i is { url: string; etiqueta: string } => Boolean(i.url));
   if (imagenes.length === 0) return null;

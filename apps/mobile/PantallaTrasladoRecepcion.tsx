@@ -16,7 +16,7 @@ import EvitarTeclado from './EvitarTeclado';
 import { esErrorTrasladoYaRecibido, mensajeError, MENSAJE_TRASLADO_YA_RECIBIDO } from './errorMessages';
 import CampoFirma from './CampoFirma';
 import HojaModal from './HojaModal';
-import ResumenTraslado, { AvisoRol } from './ResumenTraslado';
+import ResumenTraslado, { AvisoRol, TEXTO_DECLARACION_RECEPCION } from './ResumenTraslado';
 import { textoVencimiento } from './SelectorFecha';
 import { HeaderTraslado, useTraslado } from './TrasladoContext';
 import {
@@ -375,7 +375,7 @@ export default function PantallaTrasladoRecepcion({ route }: Props) {
               despacho: es lo ultimo antes de confirmar. */}
           <View style={styles.tarjeta}>
             <Text style={estilos.declaracion}>
-              Confirmo que revisé cada producto. Los reclamos posteriores quedan a cargo de este punto.
+              {TEXTO_DECLARACION_RECEPCION}
             </Text>
             <CampoFirma
               titulo="Firma de quien recibe"

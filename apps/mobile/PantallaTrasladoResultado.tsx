@@ -15,7 +15,7 @@ import type { TrasladosStackParamList } from './Navegacion';
 type Props = NativeStackScreenProps<TrasladosStackParamList, 'ResultadoTraslado'>;
 
 export default function PantallaTrasladoResultado({ route }: Props) {
-  const { referencia } = route.params;
+  const { referencia, directo } = route.params;
   const { volverAInicio } = useTraslado();
 
   return (
@@ -26,7 +26,7 @@ export default function PantallaTrasladoResultado({ route }: Props) {
         <View style={[styles.badgeEstado, { backgroundColor: 'rgba(52,211,153,0.12)' }]}>
           <Ionicons name="checkmark-circle" size={22} color="#34d399" />
           <View style={{ flex: 1 }}>
-            <Text style={[styles.badgeEstadoTitulo, { color: '#34d399' }]}>Traslado creado</Text>
+            <Text style={[styles.badgeEstadoTitulo, { color: '#34d399' }]}>{directo ? 'Llegada registrada' : 'Traslado creado'}</Text>
             <Text style={styles.badgeEstadoMensaje}>{referencia}</Text>
           </View>
         </View>

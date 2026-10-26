@@ -6,6 +6,11 @@
 // quien despacha. El origen es fijo -- el punto del usuario logueado. El envio
 // real (crear el traslado en el backend) pasa en FirmaTransportador, no aca
 // -- esta pantalla solo arma el borrador (ver TrasladoContext.tsx).
+//
+// Modo "Llega directo": mercancia que llega del proveedor al propio punto. Usa
+// la misma foto y lectura, pero no hay destino, transportador ni quien
+// despacha: solo firma quien recibe (tras aceptar la declaracion) y la llegada
+// se registra desde aca mismo, ya recibida, sin pasar por FirmaTransportador.
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,7 +20,16 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
-import { extraerTalonario, fetchTalonariosPunto, subirEvidencia, type Punto, type TalonarioPunto } from './api';
+import {
+  crearLlegadaDirecta,
+  extraerTalonario,
+  fetchTalonariosPunto,
+  referenciaTraslado,
+  subirEvidencia,
+  subirFirmaTraslado,
+  type Punto,
+  type TalonarioPunto,
+} from './api';
 import { quitarCodigo } from './PantallaEntrada';
 import EvitarTeclado from './EvitarTeclado';
 import { mensajeError } from './errorMessages';
@@ -26,7 +40,7 @@ import VisorFotoZoom from './VisorFotoZoom';
 import { datosEmpresa, EMPRESAS_TALONARIO, InsigniaEmpresa } from './ModalTalonario';
 import ModalProducto, { productoValido } from './ModalProducto';
 import { formatearFechaCorta, formatearFechaLarga } from './SelectorFecha';
-import { AvisoRol } from './ResumenTraslado';
+import { AvisoRol, TEXTO_DECLARACION_RECEPCION } from './ResumenTraslado';
 import { HeaderTraslado, nuevoItemDraft, useTraslado, type ItemTrasladoDraft } from './TrasladoContext';
 import {
   ACENTO,
@@ -35,6 +49,7 @@ import {
   FUENTE_BODY_SEMI,
   FUENTE_DISPLAY,
   NEUTRAL_400,
+  NEUTRAL_900,
   NEUTRAL_500,
   NEUTRAL_700,
   NEUTRAL_800,
@@ -48,6 +63,9 @@ type IconoNombre = keyof typeof Ionicons.glyphMap;
 
 type NavegacionNuevo =NativeStackNavigationProp<TrasladosStackParamList, 'NuevoTraslado'>;
 
+// 'despacho': traslado a otro punto; 'directo': llega del proveedor a este punto.
+type ModoTraslado = 'despacho' | 'directo';
+
 const FECHA_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 function fechaValida(valor: string): boolean {
@@ -58,7 +76,18 @@ function fechaValida(valor: string): boolean {
 
 // Punto del recorrido (origen o destino) en la tarjeta de datos leidos: nombre
 // sin el codigo y el codigo aparte, en un chip.
-function PuntoRuta({ etiqueta, punto, icono }: { etiqueta: string; punto: Punto | null; icono: IconoNombre }) {
+function PuntoRuta({
+  etiqueta,
+  punto,
+  icono,
+  texto,
+}: {
+  etiqueta: string;
+  punto: Punto | null;
+  icono: IconoNombre;
+  // Reemplaza el nombre del punto (ej. "Llega directo" como origen).
+  texto?: string;
+}) {
   return (
     <View style={estilos.puntoRuta}>
       <View style={estilos.puntoRutaIcono}>
@@ -67,10 +96,10 @@ function PuntoRuta({ etiqueta, punto, icono }: { etiqueta: string; punto: Punto 
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={styles.etiquetaSeccion}>{etiqueta}</Text>
         <Text style={estilos.valorLectura} numberOfLines={1}>
-          {punto ? quitarCodigo(punto) : '—'}
+          {texto ?? (punto ? quitarCodigo(punto) : '—')}
         </Text>
       </View>
-      {punto?.codigo ? (
+      {!texto && punto?.codigo ? (
         <View style={estilos.chipCodigo}>
           <Text style={estilos.chipCodigoTexto}>{punto.codigo}</Text>
         </View>
@@ -106,9 +135,31 @@ function ChipDetalle({ icono, texto, destacado }: { icono: IconoNombre; texto: s
   );
 }
 
+// Contenido de los botones de la foto: como ContenidoBoton pero con icono y
+// texto mas pequenos, para que quepan tres en una fila.
+function ContenidoBotonFoto({ icono, texto, color }: { icono: IconoNombre; texto: string; color: string }) {
+  return (
+    <View style={estilos.botonFotoContenido}>
+      <Ionicons name={icono} size={16} color={color} />
+      <Text style={[estilos.botonFotoTexto, { color }]} numberOfLines={1}>
+        {texto}
+      </Text>
+    </View>
+  );
+}
+
 export default function PantallaTrasladoNuevo() {
   const navigation = useNavigation<NavegacionNuevo>();
-  const { punto, draft, actualizarDraft, cargando, setCargando } = useTraslado();
+  const { usuario, punto, draft, actualizarDraft, reiniciarDraft, cargando, setCargando } = useTraslado();
+
+  const [modo, setModo] = useState<ModoTraslado>('despacho');
+  // Llega directo: declaracion aceptada, firma de quien recibe y novedad opcional.
+  const [declaracionAceptada, setDeclaracionAceptada] = useState(false);
+  const [firmaRecibeBase64, setFirmaRecibeBase64] = useState<string | null>(null);
+  const [novedad, setNovedad] = useState('');
+  const [novedadAbierta, setNovedadAbierta] = useState(false);
+  const [mensajeEnvio, setMensajeEnvio] = useState('');
+  const directo = modo === 'directo';
 
   const [observacionesAbiertas, setObservacionesAbiertas] = useState(false);
   // undefined = modal cerrado; item = editando ese (no se agregan productos a mano).
@@ -181,16 +232,19 @@ export default function PantallaTrasladoNuevo() {
       setFotoUri(uri);
       setGiroFoto(0);
       const { url } = await subirEvidencia(uri);
-      const lectura = await extraerTalonario(url, punto.id, letra);
-      if (lectura.faltantes.length > 0 || !lectura.punto_destino) {
+      const lectura = await extraerTalonario(url, punto.id, letra, directo || undefined);
+      // Si la IA leyo "Llega directo" se preselecciona ese modo (se puede cambiar).
+      const esDirecto = directo || lectura.llega_directo === true;
+      if (esDirecto) setModo('directo');
+      if (lectura.faltantes.length > 0 || (!esDirecto && !lectura.punto_destino)) {
         setFaltantes(lectura.faltantes.length > 0 ? lectura.faltantes : ['Destino']);
         return;
       }
       actualizarDraft({
         numeroTalonario: lectura.numero_talonario,
         fotoTalonarioUrl: url,
-        destino: lectura.punto_destino,
-        transportadorNombre: lectura.transportador,
+        destino: esDirecto ? null : lectura.punto_destino,
+        transportadorNombre: esDirecto ? '' : lectura.transportador,
         fecha: lectura.fecha,
         items: lectura.items.map((item) => ({
           ...nuevoItemDraft(),
@@ -207,6 +261,19 @@ export default function PantallaTrasladoNuevo() {
       setLeyendo(false);
       setCargando(false);
     }
+  };
+
+  // Cambiar de modo descarta la foto y lo leido: lo que se exige leer cambia.
+  const elegirModo = (nuevo: ModoTraslado) => {
+    if (nuevo === modo || leyendo || cargando) return;
+    setModo(nuevo);
+    setFotoUri(null);
+    setFotoPendiente(null);
+    setErrorLectura(null);
+    setFaltantes([]);
+    setDeclaracionAceptada(false);
+    setFirmaRecibeBase64(null);
+    limpiarLectura();
   };
 
   // Cambiar de empresa descarta la foto y lo leido: era de otro talonario.
@@ -279,15 +346,52 @@ export default function PantallaTrasladoNuevo() {
 
   const lecturaCompleta = draft.fotoTalonarioUrl !== '' && !errorLectura && faltantes.length === 0;
   const itemsValidos = draft.items.length > 0 && draft.items.every(productoValido);
+  const hayNovedad = novedad.trim() !== '';
   const puedeContinuar =
     lecturaCompleta &&
     !leyendo &&
     draft.numeroTalonario.trim() !== '' &&
-    !!draft.destino &&
-    draft.transportadorNombre.trim() !== '' &&
     fechaValida(draft.fecha) &&
     itemsValidos &&
-    !!draft.firmaDespachaBase64;
+    (directo
+      ? declaracionAceptada && !!firmaRecibeBase64
+      : !!draft.destino && draft.transportadorNombre.trim() !== '' && !!draft.firmaDespachaBase64);
+
+  // Llega directo: sube la firma de quien recibe y registra la llegada ya
+  // recibida (sin pasar por FirmaTransportador).
+  const registrarLlegada = async () => {
+    if (!usuario || !punto || !firmaRecibeBase64) return;
+    setCargando(true);
+    setMensajeEnvio('Subiendo firma...');
+    try {
+      const recibe = await subirFirmaTraslado(draft.id, 'recibe', firmaRecibeBase64);
+      setMensajeEnvio('Registrando llegada...');
+      const traslado = await crearLlegadaDirecta({
+        id: draft.id,
+        punto_id: punto.id,
+        creado_por: usuario.id,
+        fecha: draft.fecha,
+        numero_talonario: draft.numeroTalonario.trim(),
+        foto_talonario_url: draft.fotoTalonarioUrl,
+        items: draft.items.map((item) => ({
+          producto: item.producto.trim(),
+          marca: item.marca.trim(),
+          presentacion: item.presentacion.trim(),
+          cantidad: Number(item.cantidad.trim()),
+          fecha_vencimiento: item.fechaVencimiento || null,
+        })),
+        firma_recibe_url: recibe.url,
+        declaracion_aceptada: true,
+        novedad: novedad.trim() || undefined,
+      });
+      reiniciarDraft();
+      navigation.navigate('ResultadoTraslado', { referencia: referenciaTraslado(traslado), directo: true });
+    } catch (err) {
+      setMensajeEnvio(mensajeError(err, 'traslado'));
+    } finally {
+      setCargando(false);
+    }
+  };
 
   const hayFoto = fotoUri !== null || draft.fotoTalonarioUrl !== '';
   // Mientras se cargan los talonarios no se bloquea (el backend valida igual).
@@ -305,11 +409,61 @@ export default function PantallaTrasladoNuevo() {
         >
           <HeaderTraslado />
 
+          {/* Aviso de rol con el detalle del modo: ruta y quien firma, cada uno en
+              una sola linea, asi el alto no cambia al elegir el tipo. */}
           <AvisoRol
-            icono="cube-outline"
-            rol="Bodega origen · Despacho"
-            texto="Fotografía el talonario: los datos y los productos se leen de la foto. Al final firma como quien despacha."
-          />
+            icono={directo ? 'download-outline' : 'cube-outline'}
+            rol={directo ? 'Llega directo · Recepción' : 'Bodega origen · Despacho'}
+            // Mismo texto en los dos modos (lo de quien firma va en el detalle):
+            // si cambiara de largo, el aviso saltaria al elegir el tipo.
+            texto="Fotografía el talonario: los datos y los productos se leen de la foto."
+          >
+            {/* Una sola linea: ruta y quien firma. */}
+            <View style={estilos.modoDetalle}>
+              <Ionicons name="swap-horizontal-outline" size={14} color={ACENTO} />
+              <Text style={estilos.modoDetalleTexto} numberOfLines={1}>
+                {directo ? 'Proveedor → aquí' : 'Aquí → otro punto'}
+              </Text>
+              <Ionicons name="create-outline" size={14} color={ACENTO} style={{ marginLeft: 8 }} />
+              <Text style={estilos.modoDetalleTexto} numberOfLines={1}>
+                {directo ? 'Solo tú' : 'Tú + transportador'}
+              </Text>
+            </View>
+          </AvisoRol>
+
+          {/* Modo: despacho a otro punto o mercancia que llega directo del proveedor. */}
+          <View style={[styles.tarjeta, estilos.tarjetaModo]}>
+            <View style={estilos.modos} accessibilityRole="radiogroup">
+              {(
+                [
+                  { valor: 'despacho', texto: 'A otro punto', icono: 'cube-outline' },
+                  { valor: 'directo', texto: 'Llega directo', icono: 'download-outline' },
+                ] as { valor: ModoTraslado; texto: string; icono: IconoNombre }[]
+              ).map((opcion) => {
+                const activa = modo === opcion.valor;
+                return (
+                  <Pressable
+                    key={opcion.valor}
+                    onPress={() => elegirModo(opcion.valor)}
+                    disabled={leyendo || cargando}
+                    style={({ pressed }) => [
+                      estilos.modo,
+                      activa && estilos.modoActivo,
+                      pressed && { opacity: 0.8 },
+                    ]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: activa }}
+                    accessibilityLabel={opcion.texto}
+                  >
+                    <Ionicons name={opcion.icono} size={18} color={activa ? NEUTRAL_900 : NEUTRAL_400} />
+                    <Text style={[estilos.modoTitulo, activa && { color: NEUTRAL_900 }]} numberOfLines={1}>
+                      {opcion.texto}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
 
           {/* Foto del talonario: sin foto, las dos formas de cargarla; con foto,
               miniatura + "Repetir foto" (que vuelve a leer y reemplaza todo). */}
@@ -429,47 +583,61 @@ export default function PantallaTrasladoNuevo() {
             ) : sinTalonario ? null : (
               <>
               {fotoPendiente ? (
-                <View style={{ gap: 6 }}>
-                  <Text style={styles.previewSubtexto}>
-                    Revisa que la hoja se vea completa y derecha (puedes girarla). Luego envíala para leerla.
-                  </Text>
+                <Text style={styles.previewSubtexto}>
+                  Revisa que la hoja se vea completa y derecha (puedes girarla). Luego envíala para leerla.
+                </Text>
+              ) : null}
+              {/* Una sola fila de botones compactos. Con foto en espera, "Enviar foto"
+                  va primero y mas ancho; repetir y galeria quedan como secundarios. */}
+              <View style={estilos.filaBotones}>
+                {fotoPendiente ? (
                   <Pressable
-                    style={({ pressed }) => [styles.boton, styles.botonPrimario, pressed && styles.botonPresionado]}
+                    style={({ pressed }) => [
+                      styles.boton,
+                      styles.botonPrimario,
+                      estilos.botonFoto,
+                      { flexGrow: 2 },
+                      pressed && styles.botonPresionado,
+                    ]}
                     onPress={enviarFoto}
                     accessibilityRole="button"
                   >
-                    <ContenidoBoton icono="send-outline" texto="Enviar foto" color={TEXTO_SOBRE_ACENTO} />
+                    <ContenidoBotonFoto icono="send-outline" texto="Enviar foto" color={TEXTO_SOBRE_ACENTO} />
                   </Pressable>
-                </View>
-              ) : null}
-              <View style={estilos.filaBotones}>
+                ) : null}
                 <Pressable
                   style={({ pressed }) => [
                     styles.boton,
-                    { flex: 1 },
+                    estilos.botonFoto,
+                    { flexGrow: 1 },
                     !puedeFotografiar && styles.botonDeshabilitado,
                     pressed && styles.botonPresionado,
                   ]}
                   onPress={tomarFoto}
                   disabled={!puedeFotografiar}
+                  accessibilityRole="button"
+                  accessibilityLabel={hayFoto ? 'Repetir foto' : 'Tomar foto'}
                 >
-                  <ContenidoBoton
+                  <ContenidoBotonFoto
                     icono="camera-outline"
-                    texto={hayFoto ? 'Repetir foto' : 'Tomar foto'}
+                    texto={fotoPendiente ? 'Repetir' : hayFoto ? 'Repetir foto' : 'Tomar foto'}
                     color={TEXTO_PRIMARIO}
                   />
                 </Pressable>
                 <Pressable
                   style={({ pressed }) => [
                     styles.boton,
-                    { flex: 1 },
+                    estilos.botonFoto,
+                    { flexGrow: 1 },
                     !puedeFotografiar && styles.botonDeshabilitado,
                     pressed && styles.botonPresionado,
                   ]}
                   onPress={elegirDeGaleria}
                   disabled={!puedeFotografiar}
+                  accessibilityRole="button"
+                  accessibilityLabel="Elegir de la galería"
                 >
-                  <ContenidoBoton icono="images-outline" texto="Galería" color={NEUTRAL_400} />
+                  <ContenidoBotonFoto icono="images-outline" texto="Galería" color={TEXTO_PRIMARIO} />
                 </Pressable>
               </View>
               </>
@@ -509,19 +677,25 @@ export default function PantallaTrasladoNuevo() {
                 <View style={estilos.separador} />
 
                 <View>
-                  <PuntoRuta etiqueta="Origen" punto={punto ?? null} icono="storefront-outline" />
+                  {directo ? (
+                    <PuntoRuta etiqueta="Origen" punto={null} texto="Llega directo" icono="download-outline" />
+                  ) : (
+                    <PuntoRuta etiqueta="Origen" punto={punto ?? null} icono="storefront-outline" />
+                  )}
                   <View style={estilos.conectorRuta}>
                     <View style={estilos.lineaRuta} />
                     <Ionicons name="arrow-down" size={14} color={NEUTRAL_500} />
                     <View style={estilos.lineaRuta} />
                   </View>
-                  <PuntoRuta etiqueta="Destino" punto={draft.destino} icono="flag-outline" />
+                  <PuntoRuta etiqueta="Destino" punto={directo ? (punto ?? null) : draft.destino} icono="flag-outline" />
                 </View>
 
                 <View style={estilos.separador} />
 
                 <View style={estilos.filaDatos}>
-                  <DatoLectura etiqueta="Transportador" valor={draft.transportadorNombre} icono="person-outline" />
+                  {directo ? null : (
+                    <DatoLectura etiqueta="Transportador" valor={draft.transportadorNombre} icono="person-outline" />
+                  )}
                   <DatoLectura
                     etiqueta="Fecha"
                     valor={fechaValida(draft.fecha) ? formatearFechaLarga(draft.fecha) : ''}
@@ -589,8 +763,58 @@ export default function PantallaTrasladoNuevo() {
                 </Pressable>
               ))}
 
-              {/* Observaciones y firma de quien despacha van juntas: es lo ultimo
-                  que se completa antes de pasarle el celular al conductor. */}
+              {/* Llega directo: declaracion, firma de quien recibe y novedad opcional. */}
+              {directo ? (
+                <View style={styles.tarjeta}>
+                  <Pressable
+                    onPress={() => setDeclaracionAceptada((v) => !v)}
+                    disabled={cargando}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: declaracionAceptada }}
+                    style={estilos.filaDeclaracion}
+                  >
+                    <Ionicons
+                      name={declaracionAceptada ? 'checkbox' : 'square-outline'}
+                      size={24}
+                      color={declaracionAceptada ? ACENTO : NEUTRAL_400}
+                    />
+                    <Text style={[estilos.declaracion, { flex: 1 }]}>{TEXTO_DECLARACION_RECEPCION}</Text>
+                  </Pressable>
+                  <CampoFirma
+                    titulo="Firma de quien recibe"
+                    valor={firmaRecibeBase64}
+                    onCambio={setFirmaRecibeBase64}
+                    disabled={cargando || !declaracionAceptada}
+                    accesorio={
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.boton,
+                          { flex: 1 },
+                          hayNovedad && { borderColor: '#f87171' },
+                          pressed && styles.botonPresionado,
+                        ]}
+                        onPress={() => setNovedadAbierta(true)}
+                      >
+                        <ContenidoBoton
+                          icono={hayNovedad ? 'alert-circle' : 'alert-circle-outline'}
+                          texto="Novedad"
+                          color={hayNovedad ? TEXTO_PRIMARIO : NEUTRAL_400}
+                        />
+                      </Pressable>
+                    }
+                  />
+                  {hayNovedad ? (
+                    <Pressable onPress={() => setNovedadAbierta(true)} style={styles.notaPreviewFila}>
+                      <Ionicons name="alert-circle-outline" size={14} color="#f87171" />
+                      <Text style={styles.notaPreview} numberOfLines={2}>
+                        {novedad.trim()}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : (
+              /* Observaciones y firma de quien despacha van juntas: es lo ultimo
+                  que se completa antes de pasarle el celular al conductor. */
               <View style={styles.tarjeta}>
                 <CampoFirma
                   titulo="Firma de quien despacha"
@@ -623,7 +847,16 @@ export default function PantallaTrasladoNuevo() {
                   </Pressable>
                 ) : null}
               </View>
+              )}
             </>
+          ) : null}
+
+          {directo && mensajeEnvio && !cargando ? <Text style={styles.textoErrorInline}>{mensajeEnvio}</Text> : null}
+          {directo && cargando && !leyendo ? (
+            <View style={[styles.tarjeta, styles.estadoBox]}>
+              <ActivityIndicator color={ACENTO} />
+              <Text style={styles.mensajeSubiendo}>{mensajeEnvio}</Text>
+            </View>
           ) : null}
 
           <View style={styles.acciones}>
@@ -635,9 +868,13 @@ export default function PantallaTrasladoNuevo() {
                 !puedeContinuar && styles.botonDeshabilitado,
                 pressed && puedeContinuar && styles.botonPresionado,
               ]}
-              onPress={() => navigation.navigate('FirmaTransportador')}
+              onPress={directo ? registrarLlegada : () => navigation.navigate('FirmaTransportador')}
             >
-              <ContenidoBoton color={TEXTO_SOBRE_ACENTO} icono="arrow-forward-outline" texto="Continuar" />
+              <ContenidoBoton
+                color={TEXTO_SOBRE_ACENTO}
+                icono={directo ? 'checkmark-outline' : 'arrow-forward-outline'}
+                texto={directo ? 'Registrar llegada' : 'Continuar'}
+              />
             </Pressable>
           </View>
         </ScrollView>
@@ -660,6 +897,23 @@ export default function PantallaTrasladoNuevo() {
         <Pressable
           style={({ pressed }) => [styles.boton, styles.botonPrimario, pressed && styles.botonPresionado]}
           onPress={() => setObservacionesAbiertas(false)}
+        >
+          <ContenidoBoton color={TEXTO_SOBRE_ACENTO} icono="checkmark-outline" texto="Listo" />
+        </Pressable>
+      </HojaModal>
+      <HojaModal visible={novedadAbierta} titulo="Novedad" onCerrar={() => setNovedadAbierta(false)}>
+        <TextInput
+          value={novedad}
+          onChangeText={setNovedad}
+          placeholder="Describe la novedad de la llegada (opcional)"
+          placeholderTextColor={NEUTRAL_500}
+          style={[styles.inputNota, { minHeight: 120, textAlignVertical: 'top' }]}
+          multiline
+          autoFocus
+        />
+        <Pressable
+          style={({ pressed }) => [styles.boton, styles.botonPrimario, pressed && styles.botonPresionado]}
+          onPress={() => setNovedadAbierta(false)}
         >
           <ContenidoBoton color={TEXTO_SOBRE_ACENTO} icono="checkmark-outline" texto="Listo" />
         </Pressable>
@@ -702,6 +956,41 @@ const estilos = StyleSheet.create({
   },
   empresaNombre: { color: TEXTO_PRIMARIO, fontSize: 13.5, fontFamily: FUENTE_BODY_SEMI },
   empresaHoja: { color: NEUTRAL_500, fontSize: 12, fontFamily: FUENTE_BODY },
+  tarjetaModo: { paddingVertical: 10, paddingHorizontal: 10, gap: 0 },
+  // Control segmentado: las dos opciones en una sola fila.
+  modos: {
+    flexDirection: 'row',
+    padding: 4,
+    gap: 4,
+    borderRadius: 12,
+    backgroundColor: NEUTRAL_800,
+    borderWidth: 1,
+    borderColor: NEUTRAL_700,
+  },
+  modo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 40,
+    borderRadius: 9,
+  },
+  modoActivo: { backgroundColor: ACENTO },
+  modoTitulo: { color: TEXTO_PRIMARIO, fontSize: 14, fontFamily: FUENTE_BODY_SEMI },
+  // Detalle bajo el texto del aviso, separado por una linea fina.
+  modoDetalle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(245,197,66,0.30)',
+  },
+  modoDetalleTexto: { flexShrink: 1, color: NEUTRAL_400, fontSize: 12.5, lineHeight: 16, fontFamily: FUENTE_BODY_SEMI },
+  filaDeclaracion: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  declaracion: { fontSize: 13, lineHeight: 18, fontFamily: FUENTE_BODY_SEMI, color: TEXTO_PRIMARIO },
   hojaEsperadaTexto: { color: TEXTO_PRIMARIO, fontSize: 15, fontFamily: FUENTE_BODY_SEMI },
   valorLectura: { color: TEXTO_PRIMARIO, fontSize: 15, fontFamily: FUENTE_BODY_SEMI },
   encabezadoLectura: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
@@ -816,6 +1105,21 @@ const estilos = StyleSheet.create({
   accionFotoTexto: { color: TEXTO_PRIMARIO, fontSize: 12.5, fontFamily: FUENTE_BODY_SEMI },
   leyendo: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   filaBotones: { flexDirection: 'row', gap: 10 },
+  // Botones de la foto: mas bajos que el boton estandar (paddingVertical 16).
+  // flexBasis 0: el ancho se reparte solo por flexGrow (no por el largo del
+  // texto), asi Repetir y Galeria quedan iguales y Enviar foto el doble.
+  botonFoto: {
+    flexBasis: 0,
+    flexShrink: 1,
+    minWidth: 0,
+    paddingVertical: 0,
+    paddingHorizontal: 6,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+  },
+  botonFotoContenido: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  botonFotoTexto: { fontFamily: FUENTE_BODY_SEMI, fontSize: 13 },
   tarjetaProducto: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   cantidadCaja: {
     minWidth: 52,

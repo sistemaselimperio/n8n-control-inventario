@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { fetchPuntos, fetchTrasladoPunto, etiquetaSyscafe, referenciaTraslado, resolverNovedadTraslado, type ItemTraslado, type Punto, type Traslado } from './api';
+import { fetchPuntos, fetchTrasladoPunto, etiquetaSyscafe, origenTraslado, referenciaTraslado, resolverNovedadTraslado, type ItemTraslado, type Punto, type Traslado } from './api';
 import {
   esErrorConsecutivoDuplicado,
   esErrorNovedadYaResuelta,
@@ -207,7 +207,7 @@ export default function PantallaNovedadDetalle({ route }: Props) {
 
           <ResumenTraslado
             numero={`${referenciaTraslado(traslado)} · ${etiquetaSyscafe(traslado)}`}
-            origen={traslado.punto_origen_nombre ?? '—'}
+            origen={origenTraslado(traslado)}
             destino={traslado.punto_destino_nombre ?? '—'}
             transportador={traslado.transportador_nombre}
             talonario={traslado.talonario_id ? null : traslado.numero_talonario}
@@ -272,11 +272,16 @@ export default function PantallaNovedadDetalle({ route }: Props) {
           ) : null}
 
           <FirmasTraslado
-            firmas={[
-              { clave: 'despacha', titulo: 'Despacha', quien: traslado.punto_origen_nombre ?? '', url: traslado.firma_despacha_url },
-              { clave: 'transporta', titulo: 'Transporta', quien: traslado.transportador_nombre, url: traslado.firma_transporta_url },
-              { clave: 'recibe', titulo: 'Recibe', quien: traslado.punto_destino_nombre ?? '', url: traslado.firma_recibe_url },
-            ]}
+            firmas={
+              traslado.tipo === 'directo'
+                ? // Llega directo: solo firma quien recibe.
+                  [{ clave: 'recibe', titulo: 'Recibe', quien: traslado.punto_destino_nombre ?? '', url: traslado.firma_recibe_url }]
+                : [
+                    { clave: 'despacha', titulo: 'Despacha', quien: traslado.punto_origen_nombre ?? '', url: traslado.firma_despacha_url },
+                    { clave: 'transporta', titulo: 'Transporta', quien: traslado.transportador_nombre, url: traslado.firma_transporta_url },
+                    { clave: 'recibe', titulo: 'Recibe', quien: traslado.punto_destino_nombre ?? '', url: traslado.firma_recibe_url },
+                  ]
+            }
           />
 
           {resuelta ? (

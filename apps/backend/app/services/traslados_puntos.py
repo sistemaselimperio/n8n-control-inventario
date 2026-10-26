@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.db import get_pool
 from app.models.log import EventoLog
 from app.models.traslado_punto import (
+    LlegadaDirectaCrear,
     RecepcionTraslado,
     SolucionNovedad,
     TrasladoPuntoCrear,
@@ -141,7 +142,9 @@ def _fecha_iso_valida(texto: str) -> bool:
     return True
 
 
-async def extraer_talonario(foto_url: str, punto_origen_id: str, letra: str | None = None) -> dict:
+async def extraer_talonario(
+    foto_url: str, punto_origen_id: str, letra: str | None = None, directo: bool | None = None
+) -> dict:
     """Lee la foto del talonario con vision y resuelve el destino contra los
     puntos activos (excluyendo el origen). Devuelve los campos leidos, el
     `punto_destino` ({id, nombre, codigo} o None) y `faltantes`: nombres en
@@ -160,7 +163,12 @@ async def extraer_talonario(foto_url: str, punto_origen_id: str, letra: str | No
     Con `letra` (la empresa que el operador eligio antes de la foto) solo vale
     el talonario de esa letra: si no tiene hojas lanza TalonarioNoDisponible, y
     una hoja de otra letra cae en `faltantes` igual que un numero equivocado
-    (`letra_leida` le dice a la app de que talonario era la foto)."""
+    (`letra_leida` le dice a la app de que talonario era la foto).
+
+    `llega_directo` dice si la IA leyo "Llega directo" en bodega origen (la app
+    preselecciona ese modo). En una llegada directa -- `directo=true` porque el
+    operador ya eligio ese modo, o porque la IA lo leyo -- no hay destino ni
+    transportador que leer, asi que no entran en `faltantes`."""
     disponibles = await hojas_esperadas(punto_origen_id)
     # A la IA se le pasan todas las letras activas aunque se haya elegido una:
     # si solo viera la elegida podria "corregir" una hoja V a A.
@@ -195,7 +203,9 @@ async def extraer_talonario(foto_url: str, punto_origen_id: str, letra: str | No
     # Nombres de producto en mayusculas desde la lectura (igual que al guardar).
     items = [{**i, "producto": (i.get("producto") or "").strip().upper()} for i in (extraido.get("items") or [])]
 
-    punto_destino = _resolver_destino(destino_texto, puntos)
+    llega_directo = bool(extraido.get("llega_directo"))
+    es_directo = llega_directo if directo is None else directo
+    punto_destino = None if es_directo else _resolver_destino(destino_texto, puntos)
 
     def _confiable(campo: str) -> bool:
         return confianza.get(campo, 0) >= umbral
@@ -214,10 +224,11 @@ async def extraer_talonario(foto_url: str, punto_origen_id: str, letra: str | No
         numero = esperada["siguiente_hoja"]
     else:
         faltantes.append("Número de talonario")
-    if punto_destino is None or not _confiable("destino"):
-        faltantes.append("Destino")
-    if not transportador or not _confiable("transportador"):
-        faltantes.append("Transportador")
+    if not es_directo:
+        if punto_destino is None or not _confiable("destino"):
+            faltantes.append("Destino")
+        if not transportador or not _confiable("transportador"):
+            faltantes.append("Transportador")
     if not fecha or not _fecha_iso_valida(fecha) or not _confiable("fecha"):
         faltantes.append("Fecha")
     if not items:
@@ -232,6 +243,7 @@ async def extraer_talonario(foto_url: str, punto_origen_id: str, letra: str | No
         "transportador": transportador,
         "fecha": fecha,
         "items": items,
+        "llega_directo": llega_directo,
         "confianza": confianza,
         "punto_destino": punto_destino,
         "faltantes": faltantes,
@@ -295,7 +307,7 @@ async def crear_traslado(payload: TrasladoPuntoCrear) -> dict:
                     talonario_id,
                 )
             except asyncpg.UniqueViolationError as exc:
-                if exc.constraint_name == "traslados_puntos_talonario_numero_key":
+                if exc.constraint_name == "traslados_puntos_talonario_hoja_key":
                     raise TalonarioConflicto(
                         "Esa hoja ya se usó. Vuelve a cargar el talonario y toma la foto de la hoja que sigue."
                     ) from exc
@@ -332,6 +344,112 @@ async def crear_traslado(payload: TrasladoPuntoCrear) -> dict:
         sede_id=payload.punto_origen_id,
         resultado="ok",
         detalle={"punto_destino_id": payload.punto_destino_id, "cantidad_items": len(items)},
+    )
+
+    resultado = dict(fila)
+    resultado["items"] = items
+    return resultado
+
+
+async def crear_llegada_directa(payload: LlegadaDirectaCrear) -> dict:
+    """Registra mercancia que llega directo del proveedor al punto: la crea el
+    propio punto que recibe, consume una hoja de SU talonario (mismo control
+    antiduplicado que crear_traslado) y nace ya recibida -- sin en_transito ni
+    bandeja. Una novedad opcional la deja en 'recibido_con_novedad' con
+    novedad_estado='pendiente', para que entre al flujo de Supervision. No se
+    guardan datos del proveedor: el unico numero es el de la hoja."""
+    if not payload.declaracion_aceptada:
+        raise TrasladoInvalido("Quien recibe debe aceptar la declaración antes de firmar")
+    if not payload.firma_recibe_url:
+        raise TrasladoInvalido("Falta la firma de quien recibe")
+
+    pool = await get_pool()
+    punto = await pool.fetchrow("select id from puntos where id = $1::uuid and activo = true", payload.punto_id)
+    if punto is None:
+        raise TrasladoInvalido("El punto no existe o esta inactivo")
+    creador = await pool.fetchrow(
+        "select punto_id from usuarios_punto where id = $1::uuid and estado = 'activo'",
+        payload.creado_por,
+    )
+    if creador is None or str(creador["punto_id"]) != payload.punto_id:
+        raise TrasladoInvalido("Quien recibe debe pertenecer al punto")
+
+    novedad = (payload.novedad or "").strip() or None
+    estado = "recibido_con_novedad" if novedad else "recibido"
+    novedad_estado = "pendiente" if novedad else None
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # Misma toma de hoja con lock que crear_traslado, pero sobre el
+            # talonario del punto que recibe.
+            talonario_id, numero_talonario = await validar_y_tomar_hoja(
+                conn, payload.punto_id, payload.numero_talonario
+            )
+            try:
+                fila = await conn.fetchrow(
+                    """
+                    insert into traslados_puntos (
+                        id, tipo, punto_origen_id, punto_destino_id, fecha, firma_recibe_url,
+                        creado_por, recibido_por, recibido_at, declaracion_aceptada_at,
+                        estado, novedad, novedad_estado,
+                        numero_talonario, foto_talonario_url, talonario_id
+                    )
+                    values (
+                        $1::uuid, 'directo', null, $2::uuid, coalesce($3::date, current_date), $4,
+                        $5::uuid, $5::uuid, now(), now(),
+                        $6, $7, $8,
+                        $9, $10, $11::uuid
+                    )
+                    returning *
+                    """,
+                    payload.id,
+                    payload.punto_id,
+                    payload.fecha,
+                    payload.firma_recibe_url,
+                    payload.creado_por,
+                    estado,
+                    novedad,
+                    novedad_estado,
+                    numero_talonario,
+                    payload.foto_talonario_url,
+                    talonario_id,
+                )
+            except asyncpg.UniqueViolationError as exc:
+                if exc.constraint_name == "traslados_puntos_talonario_hoja_key":
+                    raise TalonarioConflicto(
+                        "Esa hoja ya se usó. Vuelve a cargar el talonario y toma la foto de la hoja que sigue."
+                    ) from exc
+                raise TrasladoInvalido("Ya existe un traslado con ese id") from exc
+
+            items = []
+            for item in payload.items:
+                # Llega directo: lo recibido es lo que dice la hoja.
+                fila_item = await conn.fetchrow(
+                    """
+                    insert into traslado_punto_items (
+                        traslado_id, cantidad, producto, marca, presentacion, fecha_vencimiento,
+                        cantidad_recibida
+                    )
+                    values ($1::uuid, $2, $3, $4, $5, $6, $2)
+                    returning *
+                    """,
+                    payload.id,
+                    item.cantidad,
+                    item.producto,
+                    item.marca,
+                    item.presentacion,
+                    item.fecha_vencimiento,
+                )
+                items.append(dict(fila_item))
+
+    await registrar_evento(
+        EventoLog.LLEGADA_DIRECTA_REGISTRADA,
+        entidad_tipo="traslado_punto",
+        entidad_id=payload.id,
+        actor_id=payload.creado_por,
+        sede_id=payload.punto_id,
+        resultado=estado,
+        detalle={"cantidad_items": len(items), "novedad": novedad},
     )
 
     resultado = dict(fila)
@@ -577,8 +695,9 @@ async def listar_traslados_syscafe(
     (inclusivos) filtran por t.fecha en los traslados y por la fecha de
     creacion en las anuladas."""
     pool = await get_pool()
+    # En una llegada directa no hay origen: la hoja es del punto que recibe.
     filtro_t = (
-        "where ($1::uuid is null or t.punto_origen_id = $1::uuid)"
+        "where ($1::uuid is null or coalesce(t.punto_origen_id, t.punto_destino_id) = $1::uuid)"
         " and ($2::date is null or t.fecha >= $2::date) and ($3::date is null or t.fecha <= $3::date)"
     )
     filtro_a = (
@@ -597,7 +716,8 @@ async def listar_traslados_syscafe(
                 null::text as numero_syscafe, tp.punto_id as punto_origen_id,
                 po.nombre as punto_origen_nombre, null::uuid as punto_destino_id,
                 null::text as punto_destino_nombre, 'anulada' as estado,
-                a.created_at::date as fecha, a.created_at, a.motivo, ua.nombre as anulado_por_nombre
+                a.created_at::date as fecha, a.created_at, a.motivo, ua.nombre as anulado_por_nombre,
+                null::text as tipo_traslado
             from talonario_hojas_anuladas a
             join talonarios_punto tp on tp.id = a.talonario_id
             left join puntos po on po.id = tp.punto_id
@@ -610,7 +730,8 @@ async def listar_traslados_syscafe(
             select 'traslado' as tipo, t.id, t.consecutivo, t.numero_talonario, t.talonario_id,
                 t.numero_syscafe, t.punto_origen_id, po.nombre as punto_origen_nombre,
                 t.punto_destino_id, pd.nombre as punto_destino_nombre, t.estado, t.fecha,
-                t.created_at, null::text as motivo, null::text as anulado_por_nombre
+                t.created_at, null::text as motivo, null::text as anulado_por_nombre,
+                t.tipo as tipo_traslado
             from traslados_puntos t
             left join puntos po on po.id = t.punto_origen_id
             left join puntos pd on pd.id = t.punto_destino_id
@@ -648,13 +769,14 @@ async def listar_historial(traslado_id: str) -> list[dict]:
         left join usuarios_punto u on u.id::text = l.actor_id
         left join puntos p on p.id::text = l.sede_id
         where l.entidad_tipo = 'traslado_punto' and l.entidad_id = $1
-            and l.evento in ($2, $3, $4)
+            and l.evento in ($2, $3, $4, $5)
         order by l."timestamp" asc
         """,
         traslado_id,
         EventoLog.TRASLADO_PUNTO_CREADO.value,
         EventoLog.TRASLADO_PUNTO_RECIBIDO.value,
         EventoLog.TRASLADO_PUNTO_NOVEDAD.value,
+        EventoLog.LLEGADA_DIRECTA_REGISTRADA.value,
     )
     return [dict(fila) for fila in filas]
 
@@ -674,22 +796,24 @@ async def listar_actividad(limite: int = 50) -> list[dict]:
         select * from (
             (select 'envio' as tipo, t.created_at as momento, t.id as traslado_id, {ref} as referencia,
                 po.nombre as origen, pd.nombre as destino, null::text as actor, null::text as detalle,
-                t.estado
+                t.estado, t.tipo as tipo_traslado
             from traslados_puntos t
             left join puntos po on po.id = t.punto_origen_id
             left join puntos pd on pd.id = t.punto_destino_id
             order by t.created_at desc limit $1)
             union all
-            (select 'recepcion', t.recibido_at, t.id, {ref}, po.nombre, pd.nombre, ur.nombre, null, t.estado
+            (select 'recepcion', t.recibido_at, t.id, {ref}, po.nombre, pd.nombre, ur.nombre, null, t.estado,
+                t.tipo
             from traslados_puntos t
             left join puntos po on po.id = t.punto_origen_id
             left join puntos pd on pd.id = t.punto_destino_id
             left join usuarios_punto ur on ur.id = t.recibido_por
-            where t.recibido_at is not null
+            -- La llegada directa ya cuenta como 'envio' (nace recibida): sin fila doble.
+            where t.recibido_at is not null and t.tipo <> 'directo'
             order by t.recibido_at desc limit $1)
             union all
             (select 'solucion', t.solucionado_at, t.id, {ref}, po.nombre, pd.nombre, s.nombre,
-                t.consecutivo_solucion, t.estado
+                t.consecutivo_solucion, t.estado, t.tipo
             from traslados_puntos t
             left join puntos po on po.id = t.punto_origen_id
             left join puntos pd on pd.id = t.punto_destino_id
@@ -698,7 +822,7 @@ async def listar_actividad(limite: int = 50) -> list[dict]:
             order by t.solucionado_at desc limit $1)
             union all
             (select 'syscafe', t.numero_syscafe_at, t.id, {ref}, po.nombre, pd.nombre, t.numero_syscafe_por,
-                t.numero_syscafe, t.estado
+                t.numero_syscafe, t.estado, t.tipo
             from traslados_puntos t
             left join puntos po on po.id = t.punto_origen_id
             left join puntos pd on pd.id = t.punto_destino_id
@@ -706,7 +830,7 @@ async def listar_actividad(limite: int = 50) -> list[dict]:
             order by t.numero_syscafe_at desc limit $1)
             union all
             (select 'anulada', a.created_at, null::uuid, tp.letra || ' ' || a.numero, po.nombre, null,
-                ua.nombre, a.motivo, 'anulada'
+                ua.nombre, a.motivo, 'anulada', null
             from talonario_hojas_anuladas a
             join talonarios_punto tp on tp.id = a.talonario_id
             left join puntos po on po.id = tp.punto_id
@@ -723,7 +847,10 @@ async def listar_actividad(limite: int = 50) -> list[dict]:
         origen = f["origen"] or "—"
         destino = f["destino"] or "—"
         ref_txt = f["referencia"]
-        if f["tipo"] == "envio":
+        if f["tipo"] == "envio" and f["tipo_traslado"] == "directo":
+            con_novedad = f["estado"] == "recibido_con_novedad"
+            texto = f"{destino} registró la llegada directa {ref_txt}" + (" con novedad" if con_novedad else "")
+        elif f["tipo"] == "envio":
             texto = f"{origen} envió {ref_txt} a {destino}"
         elif f["tipo"] == "recepcion":
             con_novedad = f["estado"] == "recibido_con_novedad"

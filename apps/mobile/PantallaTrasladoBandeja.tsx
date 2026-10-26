@@ -9,7 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { fetchTrasladosPunto, etiquetaSyscafe, referenciaTraslado, type Traslado } from './api';
+import { fetchTrasladosPunto, type Traslado } from './api';
+import NumerosTraslado from './NumerosTraslado';
 import { mensajeError } from './errorMessages';
 import { AvisoRol } from './ResumenTraslado';
 import { formatearFechaLarga, haceCuanto } from './SelectorFecha';
@@ -41,13 +42,7 @@ function TarjetaPorRecibir({ traslado, onRecibir }: { traslado: Traslado; onReci
       <View style={estilos.franja} />
       <View style={estilos.contenido}>
         <View style={estilos.filaSuperior}>
-          <Text style={estilos.numero}>
-            {referenciaTraslado(traslado)}
-            <Text style={{ color: traslado.numero_syscafe ? ACENTO : NEUTRAL_500, fontFamily: FUENTE_BODY }}>
-              {'  ·  '}
-              {etiquetaSyscafe(traslado)}
-            </Text>
-          </Text>
+          <NumerosTraslado traslado={traslado} />
           <View style={estilos.pildora}>
             <Ionicons name="time-outline" size={13} color={AMARILLO} />
             <Text style={estilos.pildoraTexto}>Enviado {haceCuanto(traslado.created_at)}</Text>

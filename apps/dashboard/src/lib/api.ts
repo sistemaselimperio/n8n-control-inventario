@@ -436,6 +436,9 @@ export async function actualizarProducto(
 // Traslados entre puntos con su numero Syscafe (ver GET /traslados-puntos/syscafe
 // en el backend): traslados y hojas anuladas del talonario, pendientes primero.
 // Se llena desde la app movil (Supervision) o desde la pagina /traslados.
+// "directo": mercancia que llega del proveedor al punto (sin origen ni despacho).
+export type TipoTraslado = "entre_puntos" | "directo";
+
 export interface FilaTrasladoSyscafe {
   tipo: "traslado" | "anulada";
   id: string;
@@ -443,8 +446,11 @@ export interface FilaTrasladoSyscafe {
   numero_talonario: string | null;
   talonario_id: string | null;
   numero_syscafe: string | null;
-  punto_origen_id: string;
+  // null en una llegada directa.
+  punto_origen_id: string | null;
   punto_origen_nombre: string | null;
+  // Clase de traslado; null en las hojas anuladas.
+  tipo_traslado: TipoTraslado | null;
   punto_destino_id: string | null;
   punto_destino_nombre: string | null;
   estado: string;
@@ -484,6 +490,7 @@ export interface ItemTrasladoDetalle {
 export interface TrasladoDetalle {
   id: string;
   consecutivo: number;
+  tipo: TipoTraslado;
   numero_talonario: string | null;
   talonario_id: string | null;
   numero_syscafe: string | null;

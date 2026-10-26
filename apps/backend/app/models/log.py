@@ -44,6 +44,9 @@ class EventoLog(StrEnum):
     # recepcion quedo con una diferencia -- cantidad incompleta en algun item
     # o alguna novedad cargada (general o por item).
     TRASLADO_PUNTO_NOVEDAD = "traslado_punto_novedad"
+    # Llegada directa del proveedor a un punto (sin origen, nace ya recibida) --
+    # ver crear_llegada_directa en app/services/traslados_puntos.py.
+    LLEGADA_DIRECTA_REGISTRADA = "llegada_directa_registrada"
     # Supervision (Erika) marco una novedad como resuelta -- ver
     # resolver_novedad en app/services/traslados_puntos.py.
     TRASLADO_PUNTO_NOVEDAD_RESUELTA = "traslado_punto_novedad_resuelta"

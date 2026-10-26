@@ -45,6 +45,20 @@ class ExtraerTalonario(BaseModel):
     # Letra del talonario que el operador eligio antes de la foto ("A", "V").
     # Opcional para la app vieja: sin ella se acepta cualquier talonario activo.
     letra: str | None = None
+    # True si el operador ya eligio "Llega directo" antes de la foto: no se
+    # exigen destino ni transportador. Sin el, solo cuenta lo que lea la IA.
+    directo: bool | None = None
+
+
+def _validar_numero_talonario(v: str) -> str:
+    texto = v.strip()
+    if not texto:
+        raise ValueError("El número de talonario es obligatorio")
+    if not re.fullmatch(r"[A-Za-z0-9 /-]{1,30}", texto):
+        raise ValueError(
+            "El número de talonario solo puede tener letras, números, espacios, guiones y barras (máximo 30 caracteres)"
+        )
+    return texto
 
 
 class TrasladoPuntoCrear(BaseModel):
@@ -79,14 +93,40 @@ class TrasladoPuntoCrear(BaseModel):
     @field_validator("numero_talonario")
     @classmethod
     def _numero_talonario_valido(cls, v: str) -> str:
-        texto = v.strip()
-        if not texto:
-            raise ValueError("El número de talonario es obligatorio")
-        if not re.fullmatch(r"[A-Za-z0-9 /-]{1,30}", texto):
-            raise ValueError(
-                "El número de talonario solo puede tener letras, números, espacios, guiones y barras (máximo 30 caracteres)"
-            )
-        return texto
+        return _validar_numero_talonario(v)
+
+
+class LlegadaDirectaCrear(BaseModel):
+    """Payload de POST /traslados-puntos/llegada-directa -- mercancia que llega
+    directo del proveedor al punto (sin origen, sin transportador ni quien
+    despacha). La registra el propio punto que recibe: consume una hoja de SU
+    talonario y firma solo quien recibe. Nace ya recibida (ver
+    crear_llegada_directa en app/services/traslados_puntos.py).
+
+    `id` lo genera el celular, igual que en TrasladoPuntoCrear: el path de la
+    firma en Storage (firmas-traslados/{id}-recibe.webp) se arma antes de crear."""
+
+    id: str
+    # Punto que recibe (el logueado); el talonario que se consume es el suyo.
+    punto_id: str
+    # usuario_punto de quien registra y firma; debe pertenecer a punto_id.
+    creado_por: str
+    # Fecha de la hoja; sin ella se usa la de hoy.
+    fecha: date | None = None
+    numero_talonario: str
+    foto_talonario_url: str
+    items: list[ItemTrasladoCrear] = Field(min_length=1)
+    firma_recibe_url: str
+    # Debe viajar en true: quien recibe acepto la declaracion antes de firmar.
+    declaracion_aceptada: bool
+    # Opcional: si trae texto la llegada queda 'recibido_con_novedad' y entra al
+    # flujo de Supervision.
+    novedad: str | None = None
+
+    @field_validator("numero_talonario")
+    @classmethod
+    def _numero_talonario_valido(cls, v: str) -> str:
+        return _validar_numero_talonario(v)
 
 
 class ItemRecepcion(BaseModel):

@@ -31,14 +31,22 @@ export interface ItemResumen {
   fechaVencimiento?: string | null;
 }
 
+// Declaracion que acepta quien recibe antes de firmar (recepcion de un
+// traslado y llegada directa) -- un solo texto para las dos pantallas.
+export const TEXTO_DECLARACION_RECEPCION =
+  'Confirmo que revisé cada producto. Los reclamos posteriores quedan a cargo de este punto.';
+
 export function AvisoRol({
   icono,
   rol,
   texto,
+  children,
 }: {
   icono: keyof typeof Ionicons.glyphMap;
   rol: string;
-  texto: string;
+  texto?: string;
+  // Contenido extra debajo del texto (ej. el detalle del modo en Nuevo traslado).
+  children?: React.ReactNode;
 }) {
   return (
     <View style={[styles.tarjeta, estilos.aviso]}>
@@ -47,7 +55,8 @@ export function AvisoRol({
       </View>
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={estilos.avisoRol}>{rol}</Text>
-        <Text style={estilos.avisoTexto}>{texto}</Text>
+        {texto ? <Text style={estilos.avisoTexto}>{texto}</Text> : null}
+        {children}
       </View>
     </View>
   );
@@ -105,12 +114,15 @@ export default function ResumenTraslado({
       </View>
 
       <View style={estilos.datos}>
-        <View style={estilos.dato}>
-          <Ionicons name="person-outline" size={16} color={NEUTRAL_400} />
-          <Text style={estilos.datoTexto} numberOfLines={1}>
-            {transportador}
-          </Text>
-        </View>
+        {/* Sin transportador en una llegada directa. */}
+        {transportador ? (
+          <View style={estilos.dato}>
+            <Ionicons name="person-outline" size={16} color={NEUTRAL_400} />
+            <Text style={estilos.datoTexto} numberOfLines={1}>
+              {transportador}
+            </Text>
+          </View>
+        ) : null}
         <View style={estilos.dato}>
           <Ionicons name="calendar-outline" size={16} color={NEUTRAL_400} />
           <Text style={estilos.datoTexto}>{formatearFechaLarga(fecha)}</Text>

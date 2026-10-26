@@ -779,10 +779,16 @@ export interface ItemTraslado {
   novedad: string | null;
 }
 
+/** 'entre_puntos': despacho de un punto a otro. 'directo': llega del proveedor al punto (sin origen). */
+export type TipoTraslado = 'entre_puntos' | 'directo';
+
 export interface Traslado {
   id: string;
   consecutivo: number;
-  punto_origen_id: string;
+  // Ausente en los backends anteriores a "Llega directo" (= entre_puntos).
+  tipo?: TipoTraslado;
+  // null en una llegada directa.
+  punto_origen_id: string | null;
   punto_destino_id: string;
   // Presentes en list/detail (join del backend) -- no en la respuesta de
   // POST /traslados-puntos (recien creado, todavia no hace falta el nombre).
@@ -844,12 +850,18 @@ export function referenciaTraslado(t: Pick<Traslado, 'consecutivo' | 'talonario_
   return `TP-${String(t.consecutivo).padStart(6, '0')}`;
 }
 
-/** Etiqueta del numero Syscafe junto a la referencia: "Syscafe NBR-945" o
- * "Syscafe: pendiente". */
-export function etiquetaSyscafe(t: Pick<Traslado, 'numero_syscafe'>): string {
-  return t.numero_syscafe ? `Syscafe ${t.numero_syscafe}` : 'Syscafe: pendiente';
+/** Texto del origen de un traslado: "Llega directo" si vino del proveedor, o el nombre del punto. */
+export function origenTraslado(t: { tipo?: TipoTraslado | null; punto_origen_nombre?: string | null }): string {
+  if (t.tipo === 'directo') return 'Llega directo';
+  return t.punto_origen_nombre ?? '—';
 }
 
+/** Etiqueta del numero Syscafe junto a la referencia. Al operador se le muestra
+ * como "Traslado" (es el numero del traslado en Syscafe): "Traslado NBR-945" o
+ * "Traslado: pendiente". */
+export function etiquetaSyscafe(t: Pick<Traslado, 'numero_syscafe'>): string {
+  return t.numero_syscafe ? `Traslado ${t.numero_syscafe}` : 'Traslado: pendiente';
+}
 export interface ItemTrasladoCrear {
   producto: string;
   marca: string;
@@ -881,6 +893,8 @@ export interface ExtraccionTalonario {
   }[];
   // Destino resuelto contra los puntos activos; null si no hubo coincidencia.
   punto_destino: Punto | null;
+  // La IA leyo "Llega directo" en bodega origen (la app preselecciona ese modo).
+  llega_directo?: boolean;
   // Nombres legibles de lo que no se pudo leer; si no esta vacia hay que
   // repetir la foto.
   faltantes: string[];
@@ -961,12 +975,14 @@ export async function extraerTalonario(
   puntoOrigenId: string,
   // Letra del talonario de la empresa elegida antes de la foto: el backend
   // solo acepta una hoja de ese talonario.
-  letra?: string
+  letra?: string,
+  // true si el operador ya eligio "Llega directo": no se exigen destino ni transportador.
+  directo?: boolean
 ): Promise<ExtraccionTalonario> {
   const res = await fetchConTimeout(`${API_BASE_URL}/traslados-puntos/extraer`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ foto_url: fotoUrl, punto_origen_id: puntoOrigenId, letra: letra || null }),
+    body: JSON.stringify({ foto_url: fotoUrl, punto_origen_id: puntoOrigenId, letra: letra || null, directo: directo || null }),
   });
   return parsearRespuesta<ExtraccionTalonario>(res);
 }
@@ -1000,6 +1016,35 @@ export async function crearTrasladoPunto(payload: {
   // Lo guardado en la cache quedo viejo (ver cache.ts); crear un traslado
   // consume una hoja, asi que el talonario tambien.
   invalidarCache('traslados:', 'traslado:', 'talonario:');
+  return resultado;
+}
+
+/**
+ * Registra una llegada directa del proveedor al punto -- la llama
+ * PantallaTrasladoNuevo despues de subir la firma de quien recibe (rol
+ * 'recibe', ver subirFirmaTraslado). Consume una hoja del talonario del propio
+ * punto y nace ya recibida (sin bandeja).
+ */
+export async function crearLlegadaDirecta(payload: {
+  id: string;
+  punto_id: string;
+  creado_por: string;
+  fecha?: string;
+  numero_talonario: string;
+  foto_talonario_url: string;
+  items: ItemTrasladoCrear[];
+  firma_recibe_url: string;
+  declaracion_aceptada: boolean;
+  novedad?: string;
+}): Promise<Traslado> {
+  const res = await fetchConTimeout(`${API_BASE_URL}/traslados-puntos/llegada-directa`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const resultado = await parsearRespuesta<Traslado>(res);
+  // Consume una hoja del talonario y puede dejar una novedad pendiente.
+  invalidarCache('traslados:', 'traslado:', 'talonario:', 'novedades:');
   return resultado;
 }
 
@@ -1200,8 +1245,11 @@ export interface FilaSyscafe {
   numero_talonario: string | null;
   talonario_id: string | null;
   numero_syscafe: string | null;
-  punto_origen_id: string;
+  // null en una llegada directa (ver tipo_traslado).
+  punto_origen_id: string | null;
   punto_origen_nombre: string | null;
+  // 'directo' si llego del proveedor; null en las hojas anuladas.
+  tipo_traslado?: TipoTraslado | null;
   punto_destino_id: string | null;
   punto_destino_nombre: string | null;
   estado: string;

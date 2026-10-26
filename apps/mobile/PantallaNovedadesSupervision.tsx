@@ -20,7 +20,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { buscarConsecutivoTraslado, fetchNovedadesTraslado, etiquetaSyscafe, referenciaTraslado, type Traslado } from './api';
+import { buscarConsecutivoTraslado, fetchNovedadesTraslado, origenTraslado, type Traslado } from './api';
+import NumerosTraslado from './NumerosTraslado';
 import EvitarTeclado from './EvitarTeclado';
 import { mensajeError } from './errorMessages';
 import { AvisoRol } from './ResumenTraslado';
@@ -71,13 +72,7 @@ function TarjetaNovedad({
       <View style={[estilos.franja, { backgroundColor: color }]} />
       <View style={estilos.contenido}>
         <View style={estilos.filaSuperior}>
-          <Text style={estilos.numero}>
-            {referenciaTraslado(traslado)}
-            <Text style={{ color: traslado.numero_syscafe ? ACENTO : NEUTRAL_500, fontFamily: FUENTE_BODY }}>
-              {'  ·  '}
-              {etiquetaSyscafe(traslado)}
-            </Text>
-          </Text>
+          <NumerosTraslado traslado={traslado} />
           <View
             style={[
               estilos.pildora,
@@ -94,7 +89,7 @@ function TarjetaNovedad({
         </View>
 
         <Text style={estilos.lugarTexto} numberOfLines={1}>
-          {traslado.punto_origen_nombre ?? '—'} <Text style={{ color: ACENTO }}>→</Text>{' '}
+          {origenTraslado(traslado)} <Text style={{ color: ACENTO }}>→</Text>{' '}
           {traslado.punto_destino_nombre ?? '—'}
         </Text>
 

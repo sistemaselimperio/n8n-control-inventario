@@ -33,6 +33,13 @@ _TALONARIO_SCHEMA = {
         "destino": {"type": "string", "description": "Punto/bodega de destino del traslado, tal cual esta escrito."},
         "transportador": {"type": "string", "description": "Nombre de quien transporta la mercancia."},
         "fecha": {"type": "string", "description": "Fecha del talonario en formato YYYY-MM-DD, o cadena vacia."},
+        "llega_directo": {
+            "type": "boolean",
+            "description": (
+                "true si en el campo 'bodega origen' dice 'Llega directo' (o algo equivalente, como "
+                "'directo' o 'llega directo del proveedor'); false si trae una bodega u otro texto, o esta vacio."
+            ),
+        },
         "items": {
             "type": "array",
             "description": "Productos del talonario, uno por renglon.",
@@ -65,7 +72,7 @@ _TALONARIO_SCHEMA = {
             "additionalProperties": False,
         },
     },
-    "required": ["numero_talonario", "destino", "transportador", "fecha", "items", "confianza"],
+    "required": ["numero_talonario", "destino", "transportador", "fecha", "llega_directo", "items", "confianza"],
     "additionalProperties": False,
 }
 
@@ -76,7 +83,10 @@ _TALONARIO_PROMPT = (
     "numero impreso dentro del recuadro de la esquina superior derecha), "
     "destino (a que bodega/punto va la mercancia), transportador (quien la "
     "lleva), fecha, y la lista de productos con cantidad, producto, marca, "
-    "presentacion y fecha de vencimiento (si el renglon la trae). Las fechas "
+    "presentacion y fecha de vencimiento (si el renglon la trae). Tambien "
+    "llega_directo: true solo si el campo 'bodega origen' dice 'Llega directo' "
+    "(la mercancia llega del proveedor al punto, sin bodega que despache); en "
+    "ese caso destino y transportador pueden quedar vacios. Las fechas "
     "son colombianas, en formato dd/mm/aaaa: conviertelas SIEMPRE a ISO "
     "YYYY-MM-DD (ej. '05/03/2026' -> '2026-03-05'). Si un dato no esta o no "
     "se lee, usa cadena vacia (o fecha_vencimiento vacia) y una confianza "

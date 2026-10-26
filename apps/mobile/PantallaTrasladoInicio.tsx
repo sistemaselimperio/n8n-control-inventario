@@ -17,11 +17,12 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   fetchTalonariosPunto,
   fetchTrasladosPunto,
-  etiquetaSyscafe, referenciaTraslado,
+  origenTraslado,
   type EstadoTraslado,
   type TalonarioPunto,
   type Traslado,
 } from './api';
+import NumerosTraslado from './NumerosTraslado';
 import { mensajeError } from './errorMessages';
 import HojaModal from './HojaModal';
 import { datosEmpresa, EMPRESAS_TALONARIO, InsigniaEmpresa, letraTraslado } from './ModalTalonario';
@@ -159,13 +160,7 @@ function TarjetaTraslado({
       <View style={[estilos.franja, { backgroundColor: info.color }]} />
       <View style={estilos.contenido}>
         <View style={estilos.filaSuperior}>
-          <Text style={estilos.numero}>
-            {referenciaTraslado(traslado)}
-            <Text style={{ color: traslado.numero_syscafe ? ACENTO : NEUTRAL_500, fontFamily: FUENTE_BODY }}>
-              {'  ·  '}
-              {etiquetaSyscafe(traslado)}
-            </Text>
-          </Text>
+          <NumerosTraslado traslado={traslado} />
           <View style={[estilos.pildora, { backgroundColor: info.fondo }]}>
             <Ionicons name={info.icono} size={13} color={info.color} />
             <Text style={[estilos.pildoraTexto, { color: info.color }]}>{info.texto}</Text>
@@ -180,7 +175,7 @@ function TarjetaTraslado({
           />
           <Text style={estilos.lugarEtiqueta}>{enviado ? 'Para' : 'De'}</Text>
           <Text style={estilos.lugarTexto} numberOfLines={1}>
-            {(enviado ? traslado.punto_destino_nombre : traslado.punto_origen_nombre) ?? '—'}
+            {enviado ? (traslado.punto_destino_nombre ?? '—') : origenTraslado(traslado)}
           </Text>
         </View>
 

@@ -20,6 +20,7 @@ from app.models.traslado_punto import (
     AsignarSyscafe,
     AsignarSyscafeDashboard,
     ExtraerTalonario,
+    LlegadaDirectaCrear,
     RecepcionTraslado,
     SolucionNovedad,
     TrasladoPuntoCrear,
@@ -47,6 +48,7 @@ from app.services.traslados_puntos import (
     TrasladoNoEncontrado,
     TrasladoYaRecibido,
     asignar_numero_syscafe,
+    crear_llegada_directa,
     crear_traslado,
     extraer_talonario,
     listar_actividad,
@@ -367,6 +369,21 @@ async def crear_traslado_endpoint(payload: TrasladoPuntoCrear) -> dict:
     return _serializar_traslado(resultado, items)
 
 
+@router.post("/traslados-puntos/llegada-directa", status_code=201)
+async def crear_llegada_directa_endpoint(payload: LlegadaDirectaCrear) -> dict:
+    """Registra mercancia que llega directo del proveedor al punto: nace ya
+    recibida (sin bandeja) y consume una hoja del talonario del punto que
+    recibe. Mismos 409/422 que POST /traslados-puntos."""
+    try:
+        resultado = await crear_llegada_directa(payload)
+    except (TalonarioNoDisponible, TalonarioConflicto) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except TrasladoInvalido as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    items = resultado.pop("items")
+    return _serializar_traslado(resultado, items)
+
+
 @router.post("/traslados-puntos/extraer")
 async def extraer_talonario_endpoint(payload: ExtraerTalonario) -> dict:
     """Lee la foto del talonario (IA de vision) y devuelve encabezado, items,
@@ -374,7 +391,7 @@ async def extraer_talonario_endpoint(payload: ExtraerTalonario) -> dict:
     rutas GET /traslados-puntos/{traslado_id}; igual se declara antes de las
     rutas con path param por consistencia con /novedades."""
     try:
-        return await extraer_talonario(payload.foto_url, payload.punto_origen_id, payload.letra)
+        return await extraer_talonario(payload.foto_url, payload.punto_origen_id, payload.letra, payload.directo)
     except TalonarioNoDisponible as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ExtraccionFallida as exc:
@@ -424,11 +441,18 @@ async def anular_hoja_endpoint(payload: HojaAnular) -> dict:
 async def listar_traslados(
     # UUID (no str): un id mal formado responde 422 en vez de romper el
     # cast ::uuid de Postgres con un 500.
-    destino_id: UUID | None = None, origen_id: UUID | None = None, estado: str | None = None
+    destino_id: UUID | None = None,
+    origen_id: UUID | None = None,
+    estado: str | None = None,
+    tipo: str | None = None,
 ) -> list[dict]:
     """Bandeja por recibir (destino_id) o enviados (origen_id) -- devuelve el
     conteo de items, no la lista completa (ver GET /traslados-puntos/{id}
-    para el detalle con items)."""
+    para el detalle con items). `tipo` ("entre_puntos" | "directo") filtra por
+    clase de traslado; las llegadas directas no tienen origen, asi que solo
+    salen con destino_id o sin filtro de punto."""
+    if tipo is not None and tipo not in ("entre_puntos", "directo"):
+        raise HTTPException(status_code=422, detail="tipo debe ser 'entre_puntos' o 'directo'")
     pool = await get_pool()
     condiciones: list[str] = []
     parametros: list[object] = []
@@ -441,6 +465,9 @@ async def listar_traslados(
     if estado:
         parametros.append(estado)
         condiciones.append(f"t.estado = ${len(parametros)}")
+    if tipo:
+        parametros.append(tipo)
+        condiciones.append(f"t.tipo = ${len(parametros)}")
     where = f" where {' and '.join(condiciones)}" if condiciones else ""
     rows = await pool.fetch(_SELECT_TRASLADOS + where + " order by t.created_at desc limit 100", *parametros)
     return [_serializar_traslado(dict(r)) for r in rows]
