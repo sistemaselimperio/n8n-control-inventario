@@ -395,6 +395,10 @@ alter table traslado_punto_items add column if not exists fecha_vencimiento date
 -- app/services/traslados_puntos.py). Null en los traslados anteriores.
 alter table traslados_puntos add column if not exists foto_talonario_url text;
 
+-- Texto libre de la hoja de una llegada directa (cuando no trae renglones de
+-- productos o ademas de ellos). Null en los demas traslados.
+alter table traslados_puntos add column if not exists contenido_texto text;
+
 -- Supervision de novedades (ver el plan "supervision-novedades"): quien
 -- resuelve un traslado que llego a un punto con diferencia de cantidad o con
 -- una novedad cargada. Cuenta propia -- no es un usuario_punto (no pertenece

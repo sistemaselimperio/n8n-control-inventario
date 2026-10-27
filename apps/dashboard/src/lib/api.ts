@@ -514,6 +514,8 @@ export interface TrasladoDetalle {
   recibido_at: string | null;
   declaracion_aceptada_at: string | null;
   foto_talonario_url: string | null;
+  // Texto libre de la hoja en una llegada directa.
+  contenido_texto?: string | null;
   firma_despacha_url: string | null;
   firma_transporta_url: string | null;
   firma_recibe_url: string | null;

@@ -203,6 +203,9 @@ async def extraer_talonario(
     # Nombres de producto en mayusculas desde la lectura (igual que al guardar).
     items = [{**i, "producto": (i.get("producto") or "").strip().upper()} for i in (extraido.get("items") or [])]
 
+    # En una sola linea: los saltos y espacios repetidos se colapsan a un espacio.
+    texto_libre = " ".join((extraido.get("texto_libre") or "").split())
+
     llega_directo = bool(extraido.get("llega_directo"))
     es_directo = llega_directo if directo is None else directo
     punto_destino = None if es_directo else _resolver_destino(destino_texto, puntos)
@@ -231,7 +234,9 @@ async def extraer_talonario(
             faltantes.append("Transportador")
     if not fecha or not _fecha_iso_valida(fecha) or not _confiable("fecha"):
         faltantes.append("Fecha")
-    if not items:
+    # En llegada directa la hoja puede traer solo texto libre en vez de
+    # renglones: basta con uno de los dos. Entre puntos siguen siendo obligatorios.
+    if not items and not (es_directo and texto_libre):
         faltantes.append("Productos")
 
     return {
@@ -243,6 +248,7 @@ async def extraer_talonario(
         "transportador": transportador,
         "fecha": fecha,
         "items": items,
+        "texto_libre": texto_libre,
         "llega_directo": llega_directo,
         "confianza": confianza,
         "punto_destino": punto_destino,
@@ -374,6 +380,10 @@ async def crear_llegada_directa(payload: LlegadaDirectaCrear) -> dict:
     if creador is None or str(creador["punto_id"]) != payload.punto_id:
         raise TrasladoInvalido("Quien recibe debe pertenecer al punto")
 
+    contenido_texto = " ".join((payload.contenido_texto or "").split()) or None
+    if not payload.items and contenido_texto is None:
+        raise TrasladoInvalido("La hoja debe traer al menos un producto o el contenido en texto")
+
     novedad = (payload.novedad or "").strip() or None
     estado = "recibido_con_novedad" if novedad else "recibido"
     novedad_estado = "pendiente" if novedad else None
@@ -392,13 +402,13 @@ async def crear_llegada_directa(payload: LlegadaDirectaCrear) -> dict:
                         id, tipo, punto_origen_id, punto_destino_id, fecha, firma_recibe_url,
                         creado_por, recibido_por, recibido_at, declaracion_aceptada_at,
                         estado, novedad, novedad_estado,
-                        numero_talonario, foto_talonario_url, talonario_id
+                        numero_talonario, foto_talonario_url, talonario_id, contenido_texto
                     )
                     values (
                         $1::uuid, 'directo', null, $2::uuid, coalesce($3::date, current_date), $4,
                         $5::uuid, $5::uuid, now(), now(),
                         $6, $7, $8,
-                        $9, $10, $11::uuid
+                        $9, $10, $11::uuid, $12
                     )
                     returning *
                     """,
@@ -413,6 +423,7 @@ async def crear_llegada_directa(payload: LlegadaDirectaCrear) -> dict:
                     numero_talonario,
                     payload.foto_talonario_url,
                     talonario_id,
+                    contenido_texto,
                 )
             except asyncpg.UniqueViolationError as exc:
                 if exc.constraint_name == "traslados_puntos_talonario_hoja_key":

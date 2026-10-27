@@ -158,6 +158,8 @@ export default function PantallaTrasladoNuevo() {
   const [firmaRecibeBase64, setFirmaRecibeBase64] = useState<string | null>(null);
   const [novedad, setNovedad] = useState('');
   const [novedadAbierta, setNovedadAbierta] = useState(false);
+  // Llega directo: texto libre de la hoja (lo lee la IA y el operador lo corrige).
+  const [contenidoTexto, setContenidoTexto] = useState('');
   const [mensajeEnvio, setMensajeEnvio] = useState('');
   const directo = modo === 'directo';
 
@@ -216,6 +218,7 @@ export default function PantallaTrasladoNuevo() {
       transportadorNombre: '',
       items: [],
     });
+    setContenidoTexto('');
   };
 
   // Sube la foto, la manda a leer y, si salio completa, llena el borrador
@@ -236,6 +239,7 @@ export default function PantallaTrasladoNuevo() {
       // Si la IA leyo "Llega directo" se preselecciona ese modo (se puede cambiar).
       const esDirecto = directo || lectura.llega_directo === true;
       if (esDirecto) setModo('directo');
+      if (esDirecto) setContenidoTexto(lectura.texto_libre ?? '');
       if (lectura.faltantes.length > 0 || (!esDirecto && !lectura.punto_destino)) {
         setFaltantes(lectura.faltantes.length > 0 ? lectura.faltantes : ['Destino']);
         return;
@@ -345,7 +349,10 @@ export default function PantallaTrasladoNuevo() {
   const hayObservaciones = draft.observaciones.trim() !== '';
 
   const lecturaCompleta = draft.fotoTalonarioUrl !== '' && !errorLectura && faltantes.length === 0;
-  const itemsValidos = draft.items.length > 0 && draft.items.every(productoValido);
+  const hayContenidoTexto = contenidoTexto.trim() !== '';
+  // En llegada directa la hoja puede traer solo texto, sin renglones de productos.
+  const itemsValidos =
+    (draft.items.length > 0 || (directo && hayContenidoTexto)) && draft.items.every(productoValido);
   const hayNovedad = novedad.trim() !== '';
   const puedeContinuar =
     lecturaCompleta &&
@@ -380,6 +387,7 @@ export default function PantallaTrasladoNuevo() {
           cantidad: Number(item.cantidad.trim()),
           fecha_vencimiento: item.fechaVencimiento || null,
         })),
+        contenido_texto: contenidoTexto.trim() || undefined,
         firma_recibe_url: recibe.url,
         declaracion_aceptada: true,
         novedad: novedad.trim() || undefined,
@@ -704,6 +712,47 @@ export default function PantallaTrasladoNuevo() {
                 </View>
               </View>
 
+              {/* Llega directo: texto libre escrito en la hoja (lo lee la IA, el
+                  operador lo corrige). Va antes de los productos porque a veces
+                  es lo unico que trae la hoja. */}
+              {directo ? (
+                <View style={[styles.tarjeta, estilos.tarjetaContenido]}>
+                  <View style={estilos.encabezadoContenido}>
+                    <View style={estilos.iconoContenido}>
+                      <Ionicons name="document-text-outline" size={16} color={ACENTO} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={estilos.tituloContenido}>Contenido de la hoja</Text>
+                      <Text style={styles.previewSubtexto} numberOfLines={1}>
+                        {hayContenidoTexto ? 'Corrígelo si hace falta' : 'Opcional si la hoja trae productos'}
+                      </Text>
+                    </View>
+                    {hayContenidoTexto ? (
+                      <Pressable
+                        onPress={() => setContenidoTexto('')}
+                        accessibilityRole="button"
+                        accessibilityLabel="Borrar contenido"
+                        hitSlop={8}
+                        style={({ pressed }) => [estilos.botonQuitar, pressed && { opacity: 0.6 }]}
+                      >
+                        <Ionicons name="close-circle-outline" size={18} color={NEUTRAL_400} />
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  <TextInput
+                    value={contenidoTexto}
+                    onChangeText={setContenidoTexto}
+                    placeholder="Escribe lo que dice la hoja…"
+                    placeholderTextColor={NEUTRAL_500}
+                    style={estilos.inputContenido}
+                    multiline
+                    scrollEnabled={false}
+                  />
+                </View>
+              ) : null}
+
+              {/* En llegada directa sin renglones la seccion de productos sobra. */}
+              {directo && draft.items.length === 0 ? null : (
               <View style={estilos.encabezadoProductos}>
                 <View style={estilos.tituloProductos}>
                   <Text style={styles.etiquetaSeccion}>Productos</Text>
@@ -718,7 +767,8 @@ export default function PantallaTrasladoNuevo() {
                   </View>
                 ) : null}
               </View>
-              {draft.items.length === 0 ? (
+              )}
+              {draft.items.length === 0 && !directo ? (
                 <Text style={styles.previewSubtexto}>No quedan productos. Repite la foto para leerlos de nuevo.</Text>
               ) : null}
               {draft.items.map((item) => (
@@ -1080,6 +1130,31 @@ const estilos = StyleSheet.create({
   chipDetalleDestacado: { backgroundColor: 'rgba(245,197,66,0.10)' },
   chipDetalleTexto: { color: NEUTRAL_400, fontSize: 12, fontFamily: FUENTE_BODY_SEMI, flexShrink: 1 },
   botonQuitar: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  tarjetaContenido: { gap: 10, paddingVertical: 12 },
+  encabezadoContenido: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  iconoContenido: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(245,197,66,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tituloContenido: { color: TEXTO_PRIMARIO, fontSize: 14.5, fontFamily: FUENTE_BODY_SEMI },
+  inputContenido: {
+    minHeight: 64,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: NEUTRAL_800,
+    borderWidth: 1,
+    borderColor: NEUTRAL_700,
+    color: TEXTO_PRIMARIO,
+    fontSize: 14.5,
+    lineHeight: 21,
+    fontFamily: FUENTE_BODY,
+    textAlignVertical: 'top',
+  },
   cantidadEtiqueta: { color: NEUTRAL_500, fontSize: 10, fontFamily: FUENTE_BODY_SEMI, marginTop: -2 },
   miniatura: { width: '100%', height: ALTO_MINIATURA, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000000' },
   miniaturaToque: { flex: 1, alignItems: 'center', justifyContent: 'center' },

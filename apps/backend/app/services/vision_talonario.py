@@ -59,6 +59,14 @@ _TALONARIO_SCHEMA = {
                 "additionalProperties": False,
             },
         },
+        "texto_libre": {
+            "type": "string",
+            "description": (
+                "Transcripcion literal, tal cual esta escrito, de cualquier texto libre (a mano o impreso) que "
+                "aparezca en el area de contenido de la hoja, fuera o por encima de los renglones de productos "
+                "(por ejemplo, anotaciones escritas sobre los encabezados de la tabla). Cadena vacia si no hay."
+            ),
+        },
         "confianza": {
             "type": "object",
             "description": "Score 0-1 de confianza por cada campo del encabezado.",
@@ -72,7 +80,7 @@ _TALONARIO_SCHEMA = {
             "additionalProperties": False,
         },
     },
-    "required": ["numero_talonario", "destino", "transportador", "fecha", "llega_directo", "items", "confianza"],
+    "required": ["numero_talonario", "destino", "transportador", "fecha", "llega_directo", "items", "texto_libre", "confianza"],
     "additionalProperties": False,
 }
 
@@ -92,7 +100,13 @@ _TALONARIO_PROMPT = (
     "se lee, usa cadena vacia (o fecha_vencimiento vacia) y una confianza "
     "baja en vez de inventar un valor. Asigna un score de confianza entre 0 y "
     "1 a numero_talonario, destino, transportador y fecha segun que tan "
-    "legible estaba cada uno. Lista todos los productos, uno por renglon."
+    "legible estaba cada uno. Lista todos los productos, uno por renglon. "
+    "Ademas, en texto_libre transcribe literalmente, sin resumir ni corregir, "
+    "cualquier texto libre escrito en el area de contenido de la hoja fuera de "
+    "los renglones de productos (por ejemplo, notas escritas a mano sobre los "
+    "encabezados de la tabla), en una sola linea: une los renglones con un "
+    "espacio, sin saltos de linea. Si no hay, usa "
+    "cadena vacia."
 )
 
 

@@ -115,7 +115,11 @@ class LlegadaDirectaCrear(BaseModel):
     fecha: date | None = None
     numero_talonario: str
     foto_talonario_url: str
-    items: list[ItemTrasladoCrear] = Field(min_length=1)
+    # Puede venir vacia si la hoja trae solo texto libre (contenido_texto);
+    # crear_llegada_directa rechaza el caso en que ambos esten vacios.
+    items: list[ItemTrasladoCrear] = Field(default_factory=list)
+    # Texto libre de la hoja, tal como lo leyo la IA o lo corrigio el operador.
+    contenido_texto: str | None = None
     firma_recibe_url: str
     # Debe viajar en true: quien recibe acepto la declaracion antes de firmar.
     declaracion_aceptada: bool

@@ -200,6 +200,15 @@ export default function PantallaTrasladoDetalle({ route }: Props) {
           <EditorSyscafe traslado={traslado} supervisorId={sesion.supervisor.id} onGuardado={setTraslado} />
         ) : null}
 
+        {traslado.contenido_texto ? (
+          <View style={{ gap: 8 }}>
+            <Text style={styles.etiquetaSeccion}>Contenido de la hoja</Text>
+            <View style={styles.tarjeta}>
+              <Text style={styles.itemDescripcion}>{traslado.contenido_texto}</Text>
+            </View>
+          </View>
+        ) : null}
+
         <FirmasTraslado
           firmas={
             traslado.tipo === 'directo'

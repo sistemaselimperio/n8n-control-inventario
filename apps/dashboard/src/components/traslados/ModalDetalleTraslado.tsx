@@ -202,6 +202,11 @@ export function ModalDetalleTraslado({
             </div>
           </div>
 
+          {t.contenido_texto ? (
+            <Dato etiqueta="Contenido de la hoja">
+              <span className="whitespace-pre-line">{t.contenido_texto}</span>
+            </Dato>
+          ) : null}
           {t.observaciones ? <Dato etiqueta="Observaciones">{t.observaciones}</Dato> : null}
           <ConstanciaRecepcion t={t} />
           <NovedadYSolucion t={t} />

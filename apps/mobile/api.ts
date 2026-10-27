@@ -802,6 +802,8 @@ export interface Traslado {
   talonario_id?: string | null;
   // Foto del talonario de la que se leyo el traslado (null en los anteriores).
   foto_talonario_url?: string | null;
+  // Texto libre de la hoja en una llegada directa (null si no trae).
+  contenido_texto?: string | null;
   transportador_nombre: string;
   fecha: string;
   observaciones: string | null;
@@ -895,6 +897,9 @@ export interface ExtraccionTalonario {
   punto_destino: Punto | null;
   // La IA leyo "Llega directo" en bodega origen (la app preselecciona ese modo).
   llega_directo?: boolean;
+  // Texto libre escrito en la hoja fuera de los renglones de productos ("" si no hay).
+  // Solo se usa en llegada directa; los backends anteriores no lo envian.
+  texto_libre?: string;
   // Nombres legibles de lo que no se pudo leer; si no esta vacia hay que
   // repetir la foto.
   faltantes: string[];
@@ -1032,7 +1037,9 @@ export async function crearLlegadaDirecta(payload: {
   fecha?: string;
   numero_talonario: string;
   foto_talonario_url: string;
+  // Puede ir vacia si la hoja trae solo texto (contenido_texto).
   items: ItemTrasladoCrear[];
+  contenido_texto?: string;
   firma_recibe_url: string;
   declaracion_aceptada: boolean;
   novedad?: string;
