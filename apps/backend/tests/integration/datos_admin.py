@@ -115,3 +115,34 @@ async def nuevo_talonario(pg, punto: str, usuario: str) -> str:
             punto, usuario,
         )
     )
+
+
+async def sesion_dashboard(pg, usuario: str = "root", rol: str = "admin", area: str = "todo") -> dict[str, str]:
+    """Crea un usuario del dashboard y devuelve su encabezado Authorization."""
+    from app.services.sesion_dashboard import crear_token, obtener_secreto
+
+    fila = fila_usuario_dashboard(usuario=usuario, rol=rol, area=area)
+    id_ = str(
+        await pg.fetchval(
+            """
+            insert into usuarios_dashboard (usuario, nombre, rol, area, pass_hash, pass_salt)
+            values ($1, 'Nombre', $2, $3, $4, $5) returning id
+            """,
+            usuario, rol, area, fila["pass_hash"], fila["pass_salt"],
+        )
+    )
+    token, _ = crear_token(id_, obtener_secreto())
+    return {"Authorization": f"Bearer {token}"}
+
+
+async def confirmar_item(pg, item_id: str, entregada: int, pendiente: int) -> None:
+    """Deja el item como si el bodeguero ya hubiera confirmado cantidades
+    (actualizado_at > creado_at, que es lo que exigen las devoluciones)."""
+    await pg.execute(
+        """
+        update entrega_items
+        set cantidad_entregada = $2, cantidad_pendiente = $3, actualizado_at = creado_at + interval '1 second'
+        where id = $1::uuid
+        """,
+        item_id, entregada, pendiente,
+    )
