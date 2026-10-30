@@ -25,8 +25,9 @@ Three independently-run apps, no shared package/build tool tying them together (
   in `n8n/workflows/README.md`. n8n orchestrates triggers/notifications around the backend; it does not
   reimplement business logic.
 
-Automated tests exist **only for the backend** (`apps/backend/tests`, pytest). The dashboard and mobile apps
-have zero test files/frameworks configured — don't assume a `jest`/`vitest` command exists there.
+Automated tests exist for the backend (`apps/backend/tests`, pytest) and the dashboard (`apps/dashboard`,
+Vitest + Testing Library, `npm test`). The mobile app has zero test files/frameworks configured — don't assume
+a `jest`/`vitest` command exists there.
 
 ## Commands
 
@@ -63,6 +64,7 @@ npm install
 npm run dev      # next dev
 npm run build
 npm run lint      # eslint (flat config, eslint-config-next core-web-vitals + typescript)
+npm test          # vitest run (jsdom + Testing Library; all network/Supabase mocked)
 ```
 
 ### Mobile (`apps/mobile`)
