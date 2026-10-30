@@ -62,7 +62,8 @@ function textoBusqueda(f: FilaTrasladoSyscafe): string {
       f.anulado_por_nombre,
       f.motivo,
       ESTADOS[f.estado]?.texto ?? f.estado,
-      f.numero_syscafe ? "" : "pendiente",
+      // Una hoja anulada no queda pendiente de Syscafe (la tabla no lo muestra).
+      f.numero_syscafe || f.tipo === "anulada" ? "" : "pendiente",
       f.tipo === "anulada" ? "anulada" : "",
       fechaCorta(f.fecha),
     ]

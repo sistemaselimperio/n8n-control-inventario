@@ -200,6 +200,15 @@ describe("pagina de traslados: busqueda", () => {
     expect(within(filasTabla()[0]).getByText("NBR-945")).toBeInTheDocument();
   });
 
+  it("'pendiente' encuentra solo los traslados sin Syscafe, no las hojas anuladas", async () => {
+    montar();
+    await screen.findByRole("table");
+    await buscar("pendiente");
+    await waitFor(() => expect(filasTabla()).toHaveLength(2));
+    expect(within(filasTabla()[0]).getByText("A 10")).toBeInTheDocument();
+    expect(within(filasTabla()[1]).getByText("TP-000003")).toBeInTheDocument();
+  });
+
   it("sin coincidencias muestra el mensaje y Borrar busqueda restaura la lista", async () => {
     montar();
     await screen.findByRole("table");
