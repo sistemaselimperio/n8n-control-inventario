@@ -282,3 +282,22 @@ async def test_frase_ejemplos_solo_lee_tipos_activos(pool, conn):
     conn.responder("fetch", "from tipos_documento", filas(("FEI", "factura")))
     await servicio_tipos.frase_ejemplos()
     assert "where activo = true" in conn.llamadas[0][1]
+
+
+# --------------------------------------------------------------------------
+# Regresion: un id de producto que no es uuid no debe llegar a la base
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("metodo", ["patch", "delete"])
+@pytest.mark.parametrize("id_", ["no-es-uuid", "123", "11111111-1111-1111-1111-11111111111", "x' or '1'='1"])
+async def test_producto_con_id_invalido_da_422_sin_tocar_la_base(cliente, pool, conn, metodo, id_):
+    """Antes el id viajaba como texto al cast `$1::uuid` y asyncpg lanzaba
+    DataError: HTTP 500 en vez de un error de validacion."""
+    res = await cliente.request(metodo.upper(), f"/productos/{id_}", json={"nombre": "X"}, headers=sesion(conn))
+    assert res.status_code == 422
+    assert conn.sql_ejecutado("productos") == []
+
+
+async def test_producto_con_id_invalido_sin_credenciales_sigue_dando_401(cliente, pool, conn):
+    assert (await cliente.delete("/productos/no-es-uuid")).status_code == 401

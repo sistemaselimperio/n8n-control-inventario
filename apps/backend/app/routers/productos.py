@@ -4,6 +4,8 @@ correccion manual de aca son para completar/arreglar a mano lo que la
 extraccion automatica no pudo resolver.
 """
 
+from uuid import UUID
+
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -50,7 +52,7 @@ async def crear_producto(producto: ProductoCreate) -> dict:
 
 
 @router.patch("/{producto_id}", dependencies=[Depends(requiere_supervisor_area("todo", "bodega"))])
-async def actualizar_producto(producto_id: str, cambios: ProductoActualizar) -> dict:
+async def actualizar_producto(producto_id: UUID, cambios: ProductoActualizar) -> dict:
     codigo = cambios.codigo.strip() if cambios.codigo is not None else None
     nombre = cambios.nombre.strip() if cambios.nombre is not None else None
     if codigo == "" or nombre == "":
@@ -67,7 +69,7 @@ async def actualizar_producto(producto_id: str, cambios: ProductoActualizar) -> 
             where id = $1::uuid
             returning *
             """,
-            producto_id,
+            str(producto_id),
             codigo,
             nombre,
         )
@@ -79,11 +81,11 @@ async def actualizar_producto(producto_id: str, cambios: ProductoActualizar) -> 
 
 
 @router.delete("/{producto_id}", dependencies=[Depends(requiere_supervisor_area("todo", "bodega"))])
-async def eliminar_producto(producto_id: str) -> dict:
+async def eliminar_producto(producto_id: UUID) -> dict:
     """Quita el producto del catalogo (sin historial que proteger: no hay FKs).
     Si una entrega futura trae el mismo codigo, se vuelve a crear solo."""
     try:
-        await servicio_productos.eliminar_producto(producto_id)
+        await servicio_productos.eliminar_producto(str(producto_id))
     except RegistroNoEncontrado as exc:
         raise HTTPException(status_code=404, detail="Producto no encontrado.") from exc
     return {"ok": True}
