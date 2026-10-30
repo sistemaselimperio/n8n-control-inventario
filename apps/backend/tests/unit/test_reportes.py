@@ -296,3 +296,34 @@ async def test_el_reporte_mensual_pasa_el_filtro_de_sede(cliente, pool, conn):
     res = await cliente.get("/entregas/export.xlsx", params={"sede_id": "s2"}, headers=encabezado_bearer(f))
     ws = load_workbook(io.BytesIO(res.content))["Enero 2026"]
     assert ws.max_row == 3 and ws["B3"].value == "2"
+
+
+# --------------------------------------------------------------------------
+# Regresion: sin entregas el libro igual debe poder guardarse
+# --------------------------------------------------------------------------
+
+
+async def test_sin_entregas_devuelve_un_libro_valido_con_una_hoja_explicativa(pool, conn):
+    """Antes se quitaba la unica hoja y openpyxl fallaba al guardar con
+    "At least one sheet must be visible" (HTTP 500 en una base recien limpiada)."""
+    guionar(conn, [])
+    wb = await libro()
+    assert wb.sheetnames == ["Sin datos"]
+    assert "No hay entregas" in wb["Sin datos"]["A1"].value
+
+
+async def test_una_sede_sin_entregas_tambien_devuelve_un_libro_valido(pool, conn):
+    guionar(conn, [entrega("e1", dt(5), sede="s1")])
+    wb = await libro(sede_id="otra-sede")
+    assert wb.sheetnames == ["Sin datos"]
+    # No hace falta consultar items, logs ni devoluciones para un reporte vacio.
+    assert len(conn.llamadas) == 1
+
+
+async def test_el_endpoint_responde_200_con_la_base_vacia(cliente, pool, conn):
+    f = fila_usuario_dashboard(rol="consulta")
+    conn.responder("fetchrow", "from usuarios_dashboard where id", f)
+    guionar(conn, [])
+    res = await cliente.get("/entregas/export.xlsx", headers=encabezado_bearer(f))
+    assert res.status_code == 200
+    assert load_workbook(io.BytesIO(res.content)).sheetnames == ["Sin datos"]

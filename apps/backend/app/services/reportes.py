@@ -140,9 +140,16 @@ async def generar_reporte_mensual_xlsx(*, sede_id: str | None = None) -> bytes:
 
     ids_relevantes = {str(r["id"]) for r in entregas_rows}
     if not ids_relevantes:
-        # Sin entregas (o ninguna de esa sede) -- workbook vacio, sin hojas.
+        # Sin entregas (o ninguna de esa sede). Un libro de Excel necesita al
+        # menos una hoja visible: openpyxl lanza IndexError al guardar uno sin
+        # hojas (y el endpoint respondia 500), asi que se devuelve una hoja
+        # unica que explica que no hay datos.
         wb = Workbook()
-        wb.remove(wb.active)
+        ws = wb.active
+        ws.title = "Sin datos"
+        ws["A1"] = "No hay entregas registradas para este reporte."
+        ws["A1"].font = Font(bold=True)
+        ws.column_dimensions["A"].width = 50
         buffer = io.BytesIO()
         wb.save(buffer)
         return buffer.getvalue()
