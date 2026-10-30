@@ -1,6 +1,10 @@
-import "@testing-library/jest-dom/vitest";
+import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup } from "@testing-library/react";
-import { afterEach, vi } from "vitest";
+import { afterEach, expect, vi } from "vitest";
+
+// Se registran los matchers de jest-dom a mano: la entrada /vitest del paquete
+// no extiende el expect de esta instancia de Vitest.
+expect.extend(matchers);
 
 // Cada prueba parte de un navegador limpio: sin componentes montados, sin
 // globales sustituidas (fetch, location) y sin sesion ni preferencias
