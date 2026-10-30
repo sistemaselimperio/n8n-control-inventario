@@ -24,7 +24,15 @@ async def vaciar_tablas(database_url: str) -> None:
         antes = await conn.fetchrow(
             "select (select count(*) from entregas) as entregas, (select count(*) from logs) as logs"
         )
-        await conn.execute("truncate table entregas, logs restart identity")
+        # NO se usa `truncate table entregas`: Postgres lo rechaza porque
+        # entrega_items, devoluciones e items_no_entregados la referencian por
+        # FK (y facturas_faltantes tambien). `delete from entregas` respeta
+        # esas reglas (borra los hijos en cascada y deja la factura faltante
+        # con entrega_id en null); logs no tiene FK, se vacia entera. Todo en
+        # una transaccion: o se limpia todo o no se toca nada.
+        async with conn.transaction():
+            await conn.execute("delete from entregas")
+            await conn.execute("truncate table logs")
         print(f"[db] borradas {antes['entregas']} entregas y {antes['logs']} logs")
     finally:
         await conn.close()
@@ -67,7 +75,7 @@ async def main() -> None:
 
     if "--si" not in sys.argv:
         respuesta = input(
-            "Esto borra TODAS las entregas, logs y fotos de evidencia. Escribi 'si' para continuar: "
+            "Esto borra TODAS las entregas, logs y fotos de evidencia. Escribe 'si' para continuar: "
         )
         if respuesta.strip().lower() != "si":
             print("Cancelado.")
