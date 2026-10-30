@@ -236,7 +236,7 @@ async def test_cambiar_de_talonario_con_hojas_sin_usar_exige_motivo_y_cierra_el_
     with pytest.raises(tl.TalonarioConflicto, match="A 6400"):
         await crear_traslado(traslado(esc, "A 6301"))
     assert await pg.fetchval("select count(*) from talonarios_punto where estado = 'activo'") == 1
-    detalle = await pg.fetchval("select detalle from logs where evento = 'talonario_configurado' order by id desc limit 1")
+    detalle = await pg.fetchval("select detalle from logs where evento = 'talonario_configurado' order by \"timestamp\" desc limit 1")
     assert detalle["desde"]["quedaban"] == 49 and detalle["motivo"] == "se extravio"
 
 
