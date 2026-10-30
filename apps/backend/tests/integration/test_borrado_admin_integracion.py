@@ -86,7 +86,7 @@ async def _supervisor(pg):
 
 
 async def _tipo(pg):
-    # tipos_documento es tabla semilla: no se vacia entre tests, por eso el codigo es unico.
+    # Codigo unico por prueba (la tabla se vuelve a sembrar entre tests).
     codigo = f"Z{uuid4().hex[:6].upper()}"
     await pg.execute("insert into tipos_documento (codigo, descripcion) values ($1, 'prueba')", codigo)
     return codigo, borrado.eliminar_tipo_documento, "tipos_documento", "codigo"

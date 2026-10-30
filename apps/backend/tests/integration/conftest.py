@@ -16,9 +16,6 @@ import pytest_asyncio
 from app import db
 from app.config import get_settings
 
-# Tablas que `ensure_schema()` siembra y que no se vacian entre tests.
-_TABLAS_SEMILLA = {"tipos_documento"}
-
 
 def _url_de_prueba() -> str:
     url = os.environ.get("TEST_DATABASE_URL", "").strip()
@@ -42,9 +39,13 @@ async def pg(monkeypatch: pytest.MonkeyPatch):
         await db.ensure_schema()
         pool = await db.get_pool()
         tablas = await pool.fetch("select tablename from pg_tables where schemaname = 'public'")
-        a_vaciar = [f'"{t["tablename"]}"' for t in tablas if t["tablename"] not in _TABLAS_SEMILLA]
+        # Se vacian TODAS las tablas, incluidas las que ensure_schema() siembra
+        # (tipos_documento): antes esa se dejaba intacta y un test que agregaba o
+        # borraba un tipo contaminaba a los siguientes.
+        a_vaciar = [f'"{t["tablename"]}"' for t in tablas]
         if a_vaciar:
             await pool.execute(f"truncate table {', '.join(a_vaciar)} restart identity cascade")
+        await db.ensure_schema()  # idempotente: vuelve a sembrar las tablas semilla
         yield pool
     finally:
         await db.close_pool()
