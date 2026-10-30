@@ -33,7 +33,7 @@ python -m pytest -m "not integration"        # unitarios: sin base de datos, Ope
 python -m pytest                             # todo; las de integración se omiten sin TEST_DATABASE_URL
 ```
 
-- **Unitarios** (`tests/unit`): simulan el pool de `asyncpg` (`tests/fakes.py`) y el cliente de OpenAI; no leen el `.env` ni abren conexiones. Cubren la compuerta de confianza, `procesar_extraccion()`, `aplicar_actualizacion_items()`, el login por PIN, la guardia `X-Admin-Token`, las sesiones Bearer del dashboard, los modelos Pydantic y la bitácora `logs`.
+- **Unitarios** (`tests/unit`): simulan el pool de `asyncpg` (`tests/fakes.py`) y el cliente de OpenAI; no leen el `.env` ni abren conexiones. Cubren la compuerta de confianza, `procesar_extraccion()`, `aplicar_actualizacion_items()`, el login por PIN, la guardia `X-Admin-Token`, las sesiones Bearer del dashboard, los modelos Pydantic y la bitácora `logs`, el borrado administrativo y la matriz de permisos del dashboard (rol x área x credencial), devoluciones, reporte mensual, ranking, facturas faltantes, turnos y los scripts de mantenimiento (con la base y la red simuladas).
 - **Integración** (`tests/integration`, marcadas `@pytest.mark.integration`): corren el `ensure_schema()` real contra el Postgres de `TEST_DATABASE_URL` (carrera entre sedes, deltas concurrentes, restricciones de la base). **Truncan todas las tablas**: usa un Postgres desechable, nunca Supabase. Ej.: `docker run --rm -e POSTGRES_PASSWORD=pg -p 5433:5432 postgres:17` y `TEST_DATABASE_URL=postgresql://postgres:pg@localhost:5433/postgres`.
 - CI: `.github/workflows/backend-tests.yml` (informativo, no bloquea merges).
 
