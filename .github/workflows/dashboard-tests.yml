@@ -1,0 +1,47 @@
+name: Dashboard tests
+
+# Informativo: no hay proteccion de rama que dependa de este workflow.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/dashboard/**"
+      - ".github/workflows/dashboard-tests.yml"
+  pull_request:
+    paths:
+      - "apps/dashboard/**"
+      - ".github/workflows/dashboard-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dashboard-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vitest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: apps/dashboard
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/dashboard/package-lock.json
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # Las pruebas no tocan el backend, Supabase ni Vercel: todo va con mocks.
+      - name: Pruebas
+        run: npm test
