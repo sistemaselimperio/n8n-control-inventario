@@ -62,7 +62,7 @@ async def excepcion_no_manejada(request: Request, exc: Exception) -> JSONRespons
     # siempre espera poder hacer res.json(), se queda con una pantalla en
     # blanco en vez de un mensaje de error legible.
     logger.exception("Error no manejado en %s %s", request.method, request.url.path)
-    return JSONResponse(status_code=500, content={"detail": "Error interno del servidor, proba de nuevo."})
+    return JSONResponse(status_code=500, content={"detail": "Error interno del servidor, intenta de nuevo."})
 
 
 # Marcador manual de build -- no se calcula del commit de git en runtime
@@ -72,7 +72,7 @@ async def excepcion_no_manejada(request: Request, exc: Exception) -> JSONRespons
 # a mano este string en cada cambio que valga la pena poder confirmar desde
 # afuera (ver GET /health) -- unica forma de verificar que un deploy en
 # Dokploy realmente tomo el commit esperado sin entrar al panel.
-_BUILD_MARCADOR = "logs-limit-acotado"
+_BUILD_MARCADOR = "error-500-sin-voseo"
 
 
 @app.get("/health")
