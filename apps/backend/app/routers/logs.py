@@ -3,7 +3,7 @@ del pipeline escribe aqui; este router solo expone lectura para el
 dashboard de trazabilidad.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.db import get_pool
 from app.services.permisos_dashboard import usuario_dashboard_opcional
@@ -15,7 +15,10 @@ router = APIRouter(prefix="/logs", tags=["logs"])
 async def listar_logs(
     entidad_id: str | None = None,
     sede_id: str | None = None,
-    limit: int = 100,
+    # Acotado: un LIMIT negativo hace fallar a Postgres (HTTP 500) y, sin tope, un
+    # pedido anonimo con entidad_id podia pedir millones de filas. Los clientes
+    # (dashboard y movil) piden 150 o 200.
+    limit: int = Query(100, ge=1, le=1000),
     usuario: dict | None = Depends(usuario_dashboard_opcional),
 ) -> list[dict]:
     # Sin sesion del dashboard solo se puede pedir el historial de UNA entidad

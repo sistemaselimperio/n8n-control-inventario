@@ -292,3 +292,23 @@ async def test_cargar_celdas_usa_la_primera_entrega_mas_antigua_de_todas_las_cel
     conn.responder("fetch", "from entregas e", [fila_carga(0, 8, 4, 3), fila_carga(1, 9, 4, 30)])
     _, cubiertas = await cargar_celdas(pool, "s1", 8)
     assert cubiertas == 5  # ceil(30 / 7)
+
+
+# --------------------------------------------------------------------------
+# Regresion: limit acotado
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("limit", [-1, 0, 1001, 10_000_000])
+async def test_logs_limit_fuera_de_rango_da_422_sin_consultar(cliente, pool, conn, limit):
+    """Antes un limit negativo llegaba a Postgres (HTTP 500) y uno enorme
+    permitia volcar la tabla con un pedido anonimo por entidad."""
+    res = await cliente.get("/logs", params={"entidad_id": "e1", "limit": limit})
+    assert res.status_code == 422 and conn.llamadas == []
+
+
+@pytest.mark.parametrize("limit", [1, 150, 200, 1000])
+async def test_logs_limit_dentro_de_rango_se_pasa_a_la_consulta(cliente, pool, conn, limit):
+    conn.responder("fetch", "from logs l", [])
+    assert (await cliente.get("/logs", params={"entidad_id": "e1", "limit": limit})).status_code == 200
+    assert conn.sql_ejecutado("from logs l")[0][2][-1] == limit
