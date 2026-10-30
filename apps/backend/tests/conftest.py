@@ -92,3 +92,71 @@ async def cliente():
 @pytest.fixture
 def admin_headers() -> dict[str, str]:
     return {"X-Admin-Token": _ENTORNO_PRUEBA["ADMIN_DELETE_TOKEN"]}
+
+
+# ---------------------------------------------------------------------------
+# OpenAI siempre falso
+# ---------------------------------------------------------------------------
+
+
+def _png_minimo() -> bytes:
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (8, 8), "white").save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+class VisionFalsa:
+    """Guion del cliente de vision: define que contesta el 'modelo'."""
+
+    def __init__(self) -> None:
+        self.contenido: str | None = None
+        self.refusal: str | None = None
+        self.error: BaseException | None = None
+        self.error_descarga: BaseException | None = None
+        self.llamadas: list[dict] = []
+
+    def responder(self, datos: dict | str | None) -> "VisionFalsa":
+        import json
+
+        self.contenido = datos if isinstance(datos, str) or datos is None else json.dumps(datos)
+        return self
+
+
+@pytest.fixture
+def vision(monkeypatch: pytest.MonkeyPatch) -> VisionFalsa:
+    """Reemplaza la descarga de la foto y el cliente de OpenAI en
+    app.services.vision. Nada sale a la red."""
+    from types import SimpleNamespace
+
+    from app.services import vision as modulo
+
+    guion = VisionFalsa()
+
+    async def _descargar(url: str):
+        if guion.error_descarga is not None:
+            raise guion.error_descarga
+        return _png_minimo(), "image/png"
+
+    async def _frase_ejemplos() -> str:
+        return "FEI, FV1, EDP"
+
+    class _Completions:
+        async def create(self, **kwargs):
+            guion.llamadas.append(kwargs)
+            if guion.error is not None:
+                raise guion.error
+            mensaje = SimpleNamespace(content=guion.contenido, refusal=guion.refusal)
+            return SimpleNamespace(choices=[SimpleNamespace(message=mensaje)])
+
+    class _ClienteFalso:
+        def __init__(self, **kwargs) -> None:
+            self.chat = SimpleNamespace(completions=_Completions())
+
+    monkeypatch.setattr(modulo, "_descargar_imagen", _descargar)
+    monkeypatch.setattr(modulo, "frase_ejemplos", _frase_ejemplos)
+    monkeypatch.setattr(modulo, "AsyncOpenAI", _ClienteFalso)
+    return guion

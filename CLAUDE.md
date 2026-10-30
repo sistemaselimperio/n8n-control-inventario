@@ -25,8 +25,8 @@ Three independently-run apps, no shared package/build tool tying them together (
   in `n8n/workflows/README.md`. n8n orchestrates triggers/notifications around the backend; it does not
   reimplement business logic.
 
-There are no automated tests in this repo (backend, dashboard, and mobile all currently have zero test
-files/frameworks configured). Don't assume a `pytest`/`jest` command exists.
+Automated tests exist **only for the backend** (`apps/backend/tests`, pytest). The dashboard and mobile apps
+have zero test files/frameworks configured — don't assume a `jest`/`vitest` command exists there.
 
 ## Commands
 
@@ -40,6 +40,10 @@ uvicorn app.main:app --reload --port 8000           # docs at /docs
 python -m scripts.generar_turnos                    # weekly shift-recommendation job (Figure 2)
 python -m scripts.limpiar_datos --si                 # wipe entregas/logs/evidencia bucket (test data reset)
 python -m scripts.setup_storage                      # provision the Supabase Storage bucket/RLS
+
+pip install -r requirements-dev.txt                  # pytest + pytest-asyncio (on top of requirements.txt)
+python -m pytest -m "not integration"                # unit tests: no DB, OpenAI mocked, never reads .env
+TEST_DATABASE_URL=postgresql://... python -m pytest  # + integration tests against a disposable Postgres
 ```
 
 No migrations to run by hand — `ensure_schema()` in `app/db.py` applies the full schema (idempotent
@@ -47,8 +51,10 @@ No migrations to run by hand — `ensure_schema()` in `app/db.py` applies the fu
 FastAPI `lifespan`. If you change the schema, edit the `_SCHEMA` string in `app/db.py` and keep it
 idempotent — there is no migration history to replay.
 
-No linter/formatter/test runner is configured for the backend (no ruff/black/pytest in
-`requirements.txt`) — don't invent a lint command that doesn't exist.
+Tests: `pytest.ini` registers the `integration` marker. Integration tests run `ensure_schema()` for real and
+**TRUNCATE every table**, so `TEST_DATABASE_URL` must point to a throwaway Postgres (CI uses a service container);
+without it they are skipped. No linter/formatter is configured for the backend (no ruff/black) — don't invent a
+lint command that doesn't exist.
 
 ### Dashboard (`apps/dashboard`)
 
