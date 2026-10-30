@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -100,38 +100,11 @@ async def test_logs_limit_no_numerico_da_422(cliente, pool, conn, limit):
 # /turnos
 # --------------------------------------------------------------------------
 
-TURNO = {"empleado_id": "emp-1", "sede_id": "s1", "fecha": "2026-03-05", "hora_inicio": "08:00:00", "hora_fin": "12:30:00"}
-
-
-async def test_crear_turno_inserta_con_parametros_y_devuelve_el_id(cliente, pool, conn):
-    nuevo = uuid4()
-    conn.responder("fetchval", "insert into turnos", nuevo)
-    res = await cliente.post("/turnos", json=TURNO)
-    assert res.status_code == 201 and res.json() == {"id": str(nuevo)}
-    (_, _, args) = conn.sql_ejecutado("insert into turnos")[0]
-    assert args == ("emp-1", "s1", date(2026, 3, 5), time(8, 0), time(12, 30), "manual")
-
-
-async def test_crear_turno_acepta_el_origen_sugerido_por_ia(cliente, pool, conn):
-    conn.responder("fetchval", "insert into turnos", uuid4())
-    await cliente.post("/turnos", json={**TURNO, "origen": "sugerido_ia"})
-    assert conn.sql_ejecutado("insert into turnos")[0][2][-1] == "sugerido_ia"
-
-
-@pytest.mark.parametrize(
-    "cambio",
-    [
-        {"empleado_id": None}, {"sede_id": None}, {"fecha": "no-es-fecha"}, {"fecha": "2026-13-45"},
-        {"hora_inicio": "25:00"}, {"hora_fin": "x"}, {"origen": "inventado"}, {"fecha": None},
-    ],
-)
-async def test_crear_turno_rechaza_datos_invalidos(cliente, pool, conn, cambio):
-    res = await cliente.post("/turnos", json={**TURNO, **cambio})
-    assert res.status_code == 422 and conn.llamadas == []
-
-
-async def test_crear_turno_sin_cuerpo_da_422(cliente, pool, conn):
-    assert (await cliente.post("/turnos", json={})).status_code == 422
+async def test_crear_turno_ya_no_existe(cliente, pool, conn):
+    """POST /turnos escribia en la base sin ninguna credencial y ningun cliente lo
+    usaba (el dashboard solo lee GET /turnos/carga): se elimino."""
+    res = await cliente.post("/turnos", json={"empleado_id": "emp-1", "sede_id": "s1", "fecha": "2026-03-05"})
+    assert res.status_code == 405 and conn.llamadas == []
 
 
 async def test_listar_turnos_todos_o_de_una_sede(cliente, pool, conn):

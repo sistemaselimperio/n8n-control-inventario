@@ -529,10 +529,6 @@ _PUBLICAS = {
     ("GET", "/turnos/recomendaciones"),
     # --- Salud
     ("GET", "/health"),
-    # --- AMBIGUA: escribe en la base sin ninguna credencial y ningun cliente
-    #     del repo la llama (el dashboard solo usa GET /turnos/carga). Se deja
-    #     registrada para que no pase desapercibida; ver el informe de la tarea.
-    ("POST", "/turnos"),
 }
 
 

@@ -3,35 +3,16 @@
 El job semanal que calcula shift_recommendations vive fuera de este proceso
 web (corre como un nodo cron de n8n o un script standalone en
 scripts/generar_turnos.py) y escribe directamente en la tabla
-shift_recommendations. Este router solo expone lectura/escritura CRUD.
+shift_recommendations. Este router solo expone lectura: el antiguo
+POST /turnos escribia sin credenciales y ningun cliente lo usaba, asi que se elimino.
 """
 
 from fastapi import APIRouter, Query
 
 from app.db import get_pool
-from app.models.turno import TurnoCreate
 from app.services.turnos import SEMANAS_HISTORIAL, calcular_bloques, cargar_celdas, umbral_pico
 
 router = APIRouter(prefix="/turnos", tags=["turnos"])
-
-
-@router.post("", status_code=201)
-async def crear_turno(turno: TurnoCreate) -> dict:
-    pool = await get_pool()
-    turno_id = await pool.fetchval(
-        """
-        insert into turnos (empleado_id, sede_id, fecha, hora_inicio, hora_fin, origen)
-        values ($1, $2, $3, $4, $5, $6)
-        returning id
-        """,
-        turno.empleado_id,
-        turno.sede_id,
-        turno.fecha,
-        turno.hora_inicio,
-        turno.hora_fin,
-        turno.origen.value,
-    )
-    return {"id": str(turno_id)}
 
 
 @router.get("")

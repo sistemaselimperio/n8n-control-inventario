@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -158,15 +158,23 @@ async def test_logs_con_limit_enorme_se_acota(cliente, pg):
 # --------------------------------------------------------------------------
 
 
-async def test_crear_y_listar_turnos(cliente, pg):
-    cuerpo = {"empleado_id": "e1", "sede_id": "s1", "fecha": "2026-03-05", "hora_inicio": "08:00:00", "hora_fin": "12:00:00"}
-    creado = await cliente.post("/turnos", json=cuerpo)
-    assert creado.status_code == 201
-    await cliente.post("/turnos", json={**cuerpo, "sede_id": "s2", "fecha": "2026-03-01", "origen": "sugerido_ia"})
+async def test_listar_turnos(cliente, pg):
+    insertar = (
+        "insert into turnos (empleado_id, sede_id, fecha, hora_inicio, hora_fin, origen) "
+        "values ($1, $2, $3, '08:00', '12:00', $4) returning id"
+    )
+    creado = await pg.fetchval(insertar, "e1", "s1", date(2026, 3, 5), "manual")
+    await pg.fetchval(insertar, "e1", "s2", date(2026, 3, 1), "sugerido_ia")
     todos = (await cliente.get("/turnos")).json()
     assert [t["fecha"] for t in todos] == ["2026-03-01", "2026-03-05"]  # por fecha
     assert todos[0]["origen"] == "sugerido_ia" and isinstance(todos[0]["id"], str)
-    assert [t["id"] for t in (await cliente.get("/turnos", params={"sede_id": "s1"})).json()] == [creado.json()["id"]]
+    assert [t["id"] for t in (await cliente.get("/turnos", params={"sede_id": "s1"})).json()] == [str(creado)]
+
+
+async def test_crear_turno_ya_no_existe(cliente, pg):
+    res = await cliente.post("/turnos", json={"empleado_id": "e1", "sede_id": "s1", "fecha": "2026-03-05"})
+    assert res.status_code == 405
+    assert await pg.fetchval("select count(*) from turnos") == 0
 
 
 async def test_recomendaciones_de_turnos_mas_recientes_primero(cliente, pg):
