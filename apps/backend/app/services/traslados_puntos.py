@@ -123,8 +123,12 @@ def _resolver_destino(texto: str, puntos: list[dict]) -> dict | None:
 
     puntajes = []
     for p in puntos:
-        variantes = {_normalizar(p["nombre"]), _nombre_sin_codigo(p["nombre"], p["codigo"])}
-        puntaje = max(SequenceMatcher(None, buscado, v).ratio() for v in variantes if v)
+        variantes = {v for v in (_normalizar(p["nombre"]), _nombre_sin_codigo(p["nombre"], p["codigo"])) if v}
+        if not variantes:
+            # Punto con nombre en blanco: no hay nada con que comparar (y max() de
+            # un conjunto vacio rompia toda la lectura del talonario con un 500).
+            continue
+        puntaje = max(SequenceMatcher(None, buscado, v).ratio() for v in variantes)
         puntajes.append((puntaje, p))
     puntajes.sort(key=lambda par: par[0], reverse=True)
     if not puntajes or puntajes[0][0] < _SIMILITUD_MINIMA:

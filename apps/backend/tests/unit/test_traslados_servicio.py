@@ -104,6 +104,13 @@ def test_resolver_destino_ambiguo_no_elige_ninguno():
     assert tp._resolver_destino("Bodega Norte", gemelos) is None
 
 
+def test_resolver_destino_ignora_un_punto_con_nombre_en_blanco():
+    """Regresion: un punto sin nombre hacia reventar max() con ValueError (500 en /extraer)."""
+    puntos = [{"id": "vacio", "nombre": "  ", "codigo": None}, {"id": "p1", "nombre": "CFC — La Cumbre", "codigo": "CFC"}]
+    assert tp._resolver_destino("La Cumbree", puntos)["id"] == "p1"
+    assert tp._resolver_destino("Cartagena", [puntos[0]]) is None
+
+
 def test_resolver_destino_sin_puntos():
     assert tp._resolver_destino("CFC", []) is None
 
