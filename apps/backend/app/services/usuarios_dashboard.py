@@ -199,7 +199,7 @@ async def actualizar(actor: dict, usuario_id: str, cambios: dict) -> dict:
         async with conn.transaction():
             # Bloquea a los admins activos para que dos cambios simultaneos no
             # dejen el sistema sin ninguno.
-            admins = await conn.fetch("select id from usuarios_dashboard where rol = 'admin' and activo for update")
+            admins = await conn.fetch("select id from usuarios_dashboard where rol = 'admin' and activo order by id for update")
             ids_admin_activos = {str(a["id"]) for a in admins}
             actual = await conn.fetchrow("select * from usuarios_dashboard where id = $1::uuid for update", usuario_id)
             if actual is None:

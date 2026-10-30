@@ -276,23 +276,31 @@ _CHEQUEOS_USUARIO_DASHBOARD: list[Chequeo] = [
 
 async def eliminar_usuario_dashboard(actor: dict, usuario_id: str) -> None:
     """Ademas del historial: no se borra a si mismo ni al ultimo admin activo
-    (mismas guardas que desactivar, ver usuarios_dashboard.actualizar)."""
-    async def guardas(fila: asyncpg.Record, conn: asyncpg.Connection) -> None:
+    (mismas guardas que desactivar, ver usuarios_dashboard.actualizar).
+
+    Los admins activos se bloquean (`for update`, en orden por id) ANTES de
+    leer la fila a borrar y de contarlos, igual que hace `actualizar`: sin ese
+    bloqueo, dos admins que se borran entre si a la vez veian los dos "queda
+    otro" y la tabla quedaba sin ningun administrador. El orden por id evita
+    un interbloqueo entre dos transacciones que bloquean el mismo conjunto."""
+
+    async def guardas(fila: asyncpg.Record, admins_activos: int) -> None:
         if usuario_id == actor["id"]:
             raise ReglaBorrado("No puedes eliminarte a ti mismo")
-        if fila["rol"] == "admin" and fila["activo"]:
-            admins = await conn.fetchval("select count(*) from usuarios_dashboard where rol = 'admin' and activo")
-            if admins <= 1:
-                raise ReglaBorrado("Debe quedar al menos un administrador activo")
+        if fila["rol"] == "admin" and fila["activo"] and admins_activos <= 1:
+            raise ReglaBorrado("Debe quedar al menos un administrador activo")
 
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
             async with conn.transaction():
+                admins = await conn.fetch(
+                    "select id from usuarios_dashboard where rol = 'admin' and activo order by id for update"
+                )
                 fila = await conn.fetchrow("select * from usuarios_dashboard where id = $1::uuid for update", usuario_id)
                 if fila is None:
                     raise RegistroNoEncontrado()
-                await guardas(fila, conn)
+                await guardas(fila, len(admins))
                 motivos = await _motivos(conn, _CHEQUEOS_USUARIO_DASHBOARD, usuario_id)
                 if motivos:
                     raise TieneHistorial(_mensaje("este usuario", motivos, "Puedes desactivarlo."))

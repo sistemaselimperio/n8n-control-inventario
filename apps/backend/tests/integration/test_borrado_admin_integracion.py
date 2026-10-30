@@ -582,3 +582,53 @@ async def test_http_borrar_producto_deja_evento(cliente, pg, admin_headers):
     evento = await pg.fetchrow("select * from logs")
     assert (evento["entidad_tipo"], evento["resultado"]) == ("producto", "eliminado")
     assert evento["detalle"] == {"codigo": "12345", "nombre": "SAL"}
+
+
+# --------------------------------------------------------------------------
+# Regresion: dos admins que se borran entre si a la vez
+# --------------------------------------------------------------------------
+
+
+async def test_dos_admins_que_se_borran_entre_si_a_la_vez_no_dejan_el_sistema_sin_admin(pg, monkeypatch):
+    """Antes cada borrado contaba los admins sin bloquearlos: con exactamente
+    dos admins activos, ana borrando a beto y beto borrando a ana en paralelo
+    veian "queda otro" los dos, y la tabla quedaba sin ningun administrador.
+
+    Para que la carrera sea determinista se frena a cada borrado justo despues
+    de evaluar las guardas hasta que el otro llegue ahi (con un tope de tiempo:
+    si el codigo serializa los borrados, el segundo espera el bloqueo y el
+    primero sigue cuando vence el tope)."""
+    import asyncio
+
+    ana = await _actor(pg, "ana")
+    beto_id = await nuevo_usuario_dashboard(pg, "beto", rol="admin")
+    beto = {"id": beto_id, "usuario": "beto", "nombre": "B", "rol": "admin", "area": "todo"}
+
+    llegaron = 0
+    ambos = asyncio.Event()
+    motivos_original = borrado._motivos
+
+    async def motivos_con_barrera(conn, chequeos, valor):
+        nonlocal llegaron
+        llegaron += 1
+        if llegaron >= 2:
+            ambos.set()
+        try:
+            await asyncio.wait_for(ambos.wait(), timeout=1.5)
+        except asyncio.TimeoutError:
+            pass
+        return await motivos_original(conn, chequeos, valor)
+
+    monkeypatch.setattr(borrado, "_motivos", motivos_con_barrera)
+
+    resultados = await asyncio.gather(
+        borrado.eliminar_usuario_dashboard(ana, beto_id),
+        borrado.eliminar_usuario_dashboard(beto, ana["id"]),
+        return_exceptions=True,
+    )
+
+    admins_activos = await pg.fetchval("select count(*) from usuarios_dashboard where rol = 'admin' and activo")
+    assert admins_activos == 1, f"el sistema quedo con {admins_activos} admins; resultados: {resultados!r}"
+    reglas = [r for r in resultados if isinstance(r, ReglaBorrado)]
+    assert len(reglas) == 1
+    assert "al menos un administrador" in str(reglas[0])

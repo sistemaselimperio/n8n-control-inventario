@@ -344,6 +344,11 @@ N_DASH = len(borrado._CHEQUEOS_USUARIO_DASHBOARD)
 ADMIN = {"id": ID, "usuario": "ana", "nombre": "Ana", "rol": "admin", "area": "todo"}
 
 
+def admins_activos(conn, cantidad: int) -> None:
+    """Resultado del bloqueo de admins activos (`... order by id for update`)."""
+    conn.responder("fetch", "order by id for update", [{"id": f"admin-{i}"} for i in range(cantidad)])
+
+
 def fila_dash(rol="supervisor", activo=True, usuario="luis", id=ID_OTRO) -> dict:
     return {"id": id, "usuario": usuario, "nombre": "Luis", "rol": rol, "activo": activo, "pass_hash": "H", "pass_salt": "S"}
 
@@ -364,7 +369,7 @@ async def test_usuario_dashboard_sin_historial_se_borra_y_deja_evento_a_nombre_d
 
 async def test_un_admin_no_puede_borrarse_a_si_mismo(pool, conn):
     guionar(conn, fila_dash(rol="admin", id=ID), n_chequeos=N_DASH)
-    conn.responder("fetchval", "count(*)", 5)  # aunque haya mas admins
+    admins_activos(conn, 5)  # aunque haya mas admins
     with pytest.raises(ReglaBorrado, match="a ti mismo"):
         await borrado.eliminar_usuario_dashboard(ADMIN, ID)
     assert borrados(conn) == [] and conn.inserts_log() == []
@@ -380,7 +385,7 @@ async def test_un_no_admin_tampoco_puede_borrarse_a_si_mismo(pool, conn):
 
 async def test_no_se_borra_al_ultimo_administrador_activo(pool, conn):
     guionar(conn, fila_dash(rol="admin"), n_chequeos=N_DASH)
-    conn.responder("fetchval", "count(*)", 1)
+    admins_activos(conn, 1)
     with pytest.raises(ReglaBorrado, match="al menos un administrador"):
         await borrado.eliminar_usuario_dashboard(ADMIN, ID_OTRO)
     assert borrados(conn) == [] and conn.inserts_log() == []
@@ -388,7 +393,7 @@ async def test_no_se_borra_al_ultimo_administrador_activo(pool, conn):
 
 async def test_se_puede_borrar_a_otro_admin_si_queda_alguno(pool, conn):
     guionar(conn, fila_dash(rol="admin"), n_chequeos=N_DASH)
-    conn.responder("fetchval", "count(*)", 2)
+    admins_activos(conn, 2)
     await borrado.eliminar_usuario_dashboard(ADMIN, ID_OTRO)
     assert len(borrados(conn)) == 1
 
@@ -396,10 +401,9 @@ async def test_se_puede_borrar_a_otro_admin_si_queda_alguno(pool, conn):
 async def test_un_admin_inactivo_se_borra_aunque_sea_el_unico_que_queda_registrado(pool, conn):
     """La guarda cuenta admins ACTIVOS: uno inactivo no sostiene al sistema."""
     guionar(conn, fila_dash(rol="admin", activo=False), n_chequeos=N_DASH)
-    conn.responder("fetchval", "count(*)", 1)
+    admins_activos(conn, 1)
     await borrado.eliminar_usuario_dashboard(ADMIN, ID_OTRO)
     assert len(borrados(conn)) == 1
-    assert conn.sql_ejecutado("count(*)") == []  # ni siquiera hace falta contar
 
 
 @pytest.mark.parametrize("indice", range(N_DASH))
@@ -410,6 +414,19 @@ async def test_usuario_dashboard_con_cualquier_rastro_no_se_borra(pool, conn, in
     assert borrado._CHEQUEOS_USUARIO_DASHBOARD[indice][0] in str(info.value)
     assert "desactivarlo" in str(info.value)
     assert borrados(conn) == [] and conn.inserts_log() == []
+
+
+async def test_los_admins_activos_se_bloquean_en_orden_antes_que_la_fila_objetivo(pool, conn):
+    """Regresion: sin ese bloqueo, dos admins que se borran entre si a la vez
+    dejaban el sistema sin administrador. El orden por id evita interbloqueos."""
+    guionar(conn, fila_dash(rol="admin"), n_chequeos=N_DASH)
+    admins_activos(conn, 2)
+    await borrado.eliminar_usuario_dashboard(ADMIN, ID_OTRO)
+    consultas = [c[1] for c in conn.llamadas]
+    i_admins = next(i for i, sql in enumerate(consultas) if "rol = 'admin' and activo" in sql)
+    i_objetivo = next(i for i, sql in enumerate(consultas) if sql.startswith("select * from usuarios_dashboard"))
+    assert i_admins < i_objetivo
+    assert "order by id for update" in consultas[i_admins]
 
 
 async def test_las_guardas_se_evaluan_antes_que_el_historial(pool, conn):
@@ -547,7 +564,7 @@ async def test_http_borrar_usuario_dashboard_con_sesion_admin(cliente, pool, con
 async def test_http_borrarse_a_si_mismo_da_409(cliente, pool, conn):
     guionar(conn, fila_dash(rol="admin", id=ID), n_chequeos=N_DASH)
     headers = _admin_con_id(conn, ID)
-    conn.responder("fetchval", "count(*)", 3)
+    admins_activos(conn, 3)
     res = await cliente.delete(f"/dashboard/usuarios/{ID}", headers=headers)
     assert res.status_code == 409 and "a ti mismo" in res.json()["detail"]
     assert borrados(conn) == []
@@ -556,7 +573,7 @@ async def test_http_borrarse_a_si_mismo_da_409(cliente, pool, conn):
 async def test_http_borrar_al_ultimo_admin_da_409(cliente, pool, conn):
     guionar(conn, fila_dash(rol="admin"), n_chequeos=N_DASH)
     headers = _admin_con_id(conn, ID)
-    conn.responder("fetchval", "count(*)", 1)
+    admins_activos(conn, 1)
     res = await cliente.delete(f"/dashboard/usuarios/{ID_OTRO}", headers=headers)
     assert res.status_code == 409 and "al menos un administrador" in res.json()["detail"]
 
