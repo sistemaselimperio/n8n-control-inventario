@@ -72,7 +72,7 @@ async def excepcion_no_manejada(request: Request, exc: Exception) -> JSONRespons
 # a mano este string en cada cambio que valga la pena poder confirmar desde
 # afuera (ver GET /health) -- unica forma de verificar que un deploy en
 # Dokploy realmente tomo el commit esperado sin entrar al panel.
-_BUILD_MARCADOR = "llega-directo-texto"
+_BUILD_MARCADOR = "concepto-numero-completo"
 
 
 @app.get("/health")

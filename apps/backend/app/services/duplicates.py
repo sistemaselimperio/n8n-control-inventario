@@ -187,7 +187,10 @@ def _concepto_referencia_factura(tipo: str, indicativo_numero: str, concepto_tra
         return re.sub(r"\s*-\s*|\s+", "-", texto.strip().upper())
 
     identificador = _normalizar(f"{tipo} {numero}")
-    return identificador in _normalizar(concepto_traslado)
+    # (?!\d): el numero tiene que terminar ahi. Sin esto "FEI-215" quedaba
+    # "contenido" en "FEI-21542" y una guia de traslado de otra factura
+    # destrababa por casualidad la restriccion de sede.
+    return re.search(re.escape(identificador) + r"(?!\d)", _normalizar(concepto_traslado)) is not None
 
 
 async def requiere_traslado(tipo: str, sede_id: str, entrega_id: str | None = None) -> bool:
