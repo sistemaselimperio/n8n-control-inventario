@@ -31,7 +31,7 @@ const TIMEOUT_DEFAULT_MS = 30 * 1000;
 const TIMEOUT_SUBIDA_MS = 90 * 1000;
 const TIMEOUT_PROCESAR_MS = 90 * 1000;
 
-const MENSAJE_TIMEOUT = 'La conexión tardó demasiado. Revisá la señal e intentá de nuevo.';
+const MENSAJE_TIMEOUT = 'La conexión con el servidor tardó demasiado. Revisa tu conexión (wifi o datos móviles) e intenta de nuevo.';
 
 // name 'TimeoutError' lo reconoce mensajeError (errorMessages.ts).
 function errorTimeout(): Error {
@@ -219,11 +219,10 @@ export async function fetchSedes(opciones?: OpcionesCache): Promise<Sede[]> {
     'sedes',
     VIGENCIA_REFERENCIA,
     async () => {
+      // parsearRespuesta lanza {status, detail}: asi un 5xx se muestra como
+      // error del servidor y no como un "no se pudieron cargar" sin causa.
       const res = await fetchConTimeout(`${API_BASE_URL}/sedes`);
-      if (!res.ok) {
-        throw new Error(`No se pudieron cargar las sedes (${res.status})`);
-      }
-      return res.json();
+      return parsearRespuesta<Sede[]>(res);
     },
     opciones
   );
@@ -716,10 +715,7 @@ export async function fetchPuntos(opciones?: OpcionesCache): Promise<Punto[]> {
     VIGENCIA_REFERENCIA,
     async () => {
       const res = await fetchConTimeout(`${API_BASE_URL}/puntos`);
-      if (!res.ok) {
-        throw new Error(`No se pudieron cargar los puntos (${res.status})`);
-      }
-      return res.json();
+      return parsearRespuesta<Punto[]>(res);
     },
     opciones
   );
@@ -733,10 +729,7 @@ export async function fetchUsuariosPunto(puntoId: string, opciones?: OpcionesCac
     VIGENCIA_REFERENCIA,
     async () => {
       const res = await fetchConTimeout(`${API_BASE_URL}/puntos/${puntoId}/usuarios`);
-      if (!res.ok) {
-        throw new Error(`No se pudo cargar el personal de este punto (${res.status})`);
-      }
-      return res.json();
+      return parsearRespuesta<UsuarioPuntoBasico[]>(res);
     },
     opciones
   );

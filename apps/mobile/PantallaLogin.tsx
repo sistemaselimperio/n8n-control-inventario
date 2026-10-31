@@ -193,7 +193,9 @@ export default function PantallaLogin({
         if (usuarioUnicoPorLugar && lista.length > 0) elegirEmpleado(lista[0]);
       })
       .catch((err) => {
-        if (pedidoLugar.current === sede.id) setErrorEmpleados(mensajeError(err, 'empleados'));
+        if (pedidoLugar.current === sede.id) {
+          setErrorEmpleados(mensajeError(err, etiquetaLugar === 'punto' ? 'personal_punto' : 'empleados'));
+        }
       })
       .finally(() => {
         clearTimeout(indicador);
@@ -223,7 +225,7 @@ export default function PantallaLogin({
         if (lista.length === 1) seleccionarLugar(lista[0]);
         else if (recordado && !usuarioUnicoPorLugar) seleccionarLugar(recordado);
       })
-      .catch((err) => setErrorSedes(mensajeError(err, 'sedes')))
+      .catch((err) => setErrorSedes(mensajeError(err, etiquetaLugar === 'punto' ? 'puntos' : 'sedes')))
       .finally(() => {
         clearTimeout(indicador);
         setCargandoSedes(false);

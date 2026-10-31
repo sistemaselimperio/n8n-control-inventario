@@ -7,7 +7,9 @@
 export type ContextoError =
   | 'login'
   | 'sedes'
+  | 'puntos'
   | 'empleados'
+  | 'personal_punto'
   | 'evidencia'
   | 'firma'
   | 'entrega'
@@ -23,7 +25,10 @@ const MENSAJE_SESION = 'PIN incorrecto o sesión no válida.';
 const MENSAJES_POR_CONTEXTO: Record<ContextoError, string> = {
   login: MENSAJE_SESION,
   sedes: 'No se pudieron cargar las sedes. Intenta de nuevo.',
+  // Login de Traslados: alli el lugar es un punto, no una sede.
+  puntos: 'No se pudieron cargar los puntos. Intenta de nuevo.',
   empleados: 'No se pudo cargar el personal de esta sede. Intenta de nuevo.',
+  personal_punto: 'No se pudo cargar la cuenta de este punto. Intenta de nuevo.',
   evidencia: 'No se pudo subir la foto. Revisá tu conexión e intentá de nuevo.',
   firma: 'No se pudo subir la firma. Revisá tu conexión e intentá de nuevo.',
   entrega: 'No se pudo procesar la entrega. Intentá de nuevo.',
@@ -217,8 +222,10 @@ export function mensajeError(err: unknown, contexto?: ContextoError): string {
   // fetch() rechaza con un TypeError cuando no hay conexion -- el texto exacto
   // varia segun plataforma ("Network request failed" en React Native,
   // "Failed to fetch" en web/debugger).
+  // No siempre es falta de internet: tambien pasa cuando la red (ej. un wifi
+  // inestable) no logra llegar al servidor aunque haya conexion.
   if (err instanceof TypeError && /network request failed|failed to fetch/i.test(err.message)) {
-    return 'Sin conexión a internet. Revisa tu red e intenta de nuevo.';
+    return 'No se pudo conectar con el servidor. Revisa tu conexión (wifi o datos móviles) e intenta de nuevo.';
   }
 
   if (esErrorHttp(err)) {
