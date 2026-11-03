@@ -19,6 +19,7 @@ import { claseBoton, ErrorConReintento, Icono, Pildora, type TonoPildora } from 
 import { Folio } from "@/components/entregas/Folio";
 import { empresaTalonario, ESTADOS, fechaCorta, fechaHora, ORIGEN_DIRECTO, referencia } from "./compartido";
 import { Dato, ModalBase } from "./ModalBase";
+import { ReporteSyscafe } from "./ReporteSyscafe";
 
 export function ModalDetalleTraslado({
   id,
@@ -144,6 +145,14 @@ export function ModalDetalleTraslado({
                 {t.numero_syscafe_por ?? "—"}, {fechaHora(t.numero_syscafe_at)}
               </Dato>
             ) : null}
+            <ReporteSyscafe
+              traslado={t}
+              puedeSubir={puedeAsignar}
+              onSubido={async () => {
+                await mutate();
+                onCambio();
+              }}
+            />
             <Dato etiqueta="Creado por">
               {t.creado_por_nombre ?? "—"}, {fechaHora(t.created_at)}
             </Dato>

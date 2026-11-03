@@ -496,6 +496,11 @@ export interface TrasladoDetalle {
   numero_syscafe: string | null;
   numero_syscafe_at: string | null;
   numero_syscafe_por: string | null;
+  // Reporte generado por Syscafe: uno solo, inmutable (imagen WebP o PDF).
+  reporte_syscafe_url?: string | null;
+  reporte_syscafe_tipo?: string | null;
+  reporte_syscafe_at?: string | null;
+  reporte_syscafe_por?: string | null;
   punto_origen_nombre: string | null;
   punto_destino_nombre: string | null;
   transportador_nombre: string;
@@ -583,6 +588,23 @@ export async function asignarSyscafeDashboard(trasladoId: string, numeroSyscafe:
   if (!res.ok) {
     throw new Error(await mensajeDeError(res, "No se pudo guardar el número Syscafe"));
   }
+}
+
+// Sube el reporte Syscafe de un traslado (multipart, campo `archivo`). Un solo
+// archivo por traslado e inmutable: 409 si ya tiene uno, 413 si pasa de 5 MB,
+// 415 si no es imagen/PDF. No se fija Content-Type: el navegador agrega el
+// boundary del multipart.
+export async function subirReporteSyscafeDashboard(trasladoId: string, archivo: File): Promise<TrasladoDetalle> {
+  const cuerpo = new FormData();
+  cuerpo.append("archivo", archivo);
+  const res = await apiFetch(`/traslados-puntos/${trasladoId}/reporte-syscafe/dashboard`, {
+    method: "POST",
+    body: cuerpo,
+  });
+  if (!res.ok) {
+    throw new Error(await mensajeDeError(res, "No se pudo subir el reporte Syscafe"));
+  }
+  return res.json();
 }
 
 // Ranking de productos mas/menos vendidos en un rango de fechas (ver GET

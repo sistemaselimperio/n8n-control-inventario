@@ -390,6 +390,25 @@ describe("productos y traslados", () => {
     mockFetch(respuestaJson({ detail: "Ya lo tiene la hoja A 12" }, 409));
     await expect(api.asignarSyscafeDashboard("t1", "NBR-1")).rejects.toThrow("Ya lo tiene la hoja A 12");
   });
+
+  it("subirReporteSyscafeDashboard envia multipart con el archivo, sin Content-Type manual", async () => {
+    const fetchMock = mockFetch(respuestaJson({ id: "t1", reporte_syscafe_url: "https://x/r.pdf" }));
+    const archivo = new File(["%PDF-1.4"], "reporte.pdf", { type: "application/pdf" });
+    const res = await api.subirReporteSyscafeDashboard("t1", archivo);
+    const { url, init, headers } = ultimaLlamada(fetchMock);
+    expect(url).toBe(`${BASE}/traslados-puntos/t1/reporte-syscafe/dashboard`);
+    expect(init.method).toBe("POST");
+    expect(init.body).toBeInstanceOf(FormData);
+    expect((init.body as FormData).get("archivo")).toBeInstanceOf(File);
+    expect(headers.has("Content-Type")).toBe(false);
+    expect(res.reporte_syscafe_url).toBe("https://x/r.pdf");
+  });
+
+  it("subirReporteSyscafeDashboard muestra el 409 del backend", async () => {
+    mockFetch(respuestaJson({ detail: "Este traslado ya tiene un reporte Syscafe" }, 409));
+    const archivo = new File(["x"], "r.pdf", { type: "application/pdf" });
+    await expect(api.subirReporteSyscafeDashboard("t1", archivo)).rejects.toThrow("ya tiene un reporte Syscafe");
+  });
 });
 
 describe("administracion (adminFetch)", () => {
