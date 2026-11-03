@@ -17,8 +17,9 @@ class Settings(BaseSettings):
     # por parte de OpenAI, dejo de ser el default seguro.
     vision_model: str = "gpt-5.6-luna"
 
-    # Supabase Storage — solo la usa scripts/setup_storage.py (provisioning),
-    # el backend web no toca Storage directamente. La app movil sube con la
+    # Supabase Storage — la usan scripts/setup_storage.py (provisioning) y
+    # app/services/storage_evidencia.py (reporte Syscafe, subido desde el
+    # backend). La app movil sube con la
     # publishable key (ver apps/mobile/supabase.ts).
     # Secret key nueva (sb_secret_...) — reemplaza a la service_role key (JWT),
     # que Supabase da de baja a fines de 2026. Ambas funcionan igual, esta es

@@ -9,7 +9,7 @@ ahi si son dos flujos con entidad propia bien grande cada uno.
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 
 from app.db import get_pool
 from app.models.empleado import PinNuevo
@@ -43,6 +43,10 @@ from app.services.traslados_puntos import (
     NovedadInvalida,
     NovedadNoEncontrada,
     NovedadYaResuelta,
+    MAX_BYTES_REPORTE_SYSCAFE,
+    ArchivoReporteMuyGrande,
+    ArchivoReporteNoPermitido,
+    ReporteSyscafeYaExiste,
     SyscafeDuplicado,
     TrasladoInvalido,
     TrasladoNoEncontrado,
@@ -56,8 +60,10 @@ from app.services.traslados_puntos import (
     listar_traslados_syscafe,
     registrar_recepcion,
     resolver_novedad,
+    subir_reporte_syscafe,
     validar_supervisor_activo,
 )
+from app.services.storage_evidencia import StorageNoDisponible
 from app.services.vision import ExtraccionFallida
 from app.services.usuarios import (
     DatoInvalido,
@@ -629,3 +635,33 @@ async def asignar_syscafe_dashboard(
     # Nombre para el feed de actividad: el de la sesion; con el token legacy no hay usuario.
     nombre = actor.usuario["nombre"] if actor.usuario else "Administración"
     return await _asignar_syscafe(traslado_id, payload.numero_syscafe, nombre)
+
+
+@router.post("/traslados-puntos/{traslado_id}/reporte-syscafe/dashboard")
+async def subir_reporte_syscafe_dashboard(
+    traslado_id: UUID,
+    archivo: UploadFile = File(...),
+    actor: ActorDashboard = Depends(requiere_supervisor_area("todo", "traslados")),
+) -> dict:
+    """Dashboard: sube el reporte generado por Syscafe (imagen o PDF, max 5 MB).
+    Un solo archivo por traslado e inmutable: un segundo intento responde 409.
+    Mismos permisos que PATCH .../syscafe/dashboard."""
+    # Se lee un byte de mas: basta para detectar el exceso sin cargar todo el archivo.
+    contenido = await archivo.read(MAX_BYTES_REPORTE_SYSCAFE + 1)
+    if len(contenido) > MAX_BYTES_REPORTE_SYSCAFE:
+        raise HTTPException(status_code=413, detail="El archivo supera los 5 MB")
+    nombre = actor.usuario["nombre"] if actor.usuario else "Administración"
+    try:
+        resultado = await subir_reporte_syscafe(str(traslado_id), contenido, archivo.content_type or "", nombre)
+    except TrasladoNoEncontrado as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ReporteSyscafeYaExiste as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ArchivoReporteNoPermitido as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+    except ArchivoReporteMuyGrande as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except StorageNoDisponible as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    items = resultado.pop("items")
+    return _serializar_traslado(resultado, items)

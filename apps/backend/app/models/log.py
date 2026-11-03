@@ -50,6 +50,9 @@ class EventoLog(StrEnum):
     # Supervision (Erika) marco una novedad como resuelta -- ver
     # resolver_novedad en app/services/traslados_puntos.py.
     TRASLADO_PUNTO_NOVEDAD_RESUELTA = "traslado_punto_novedad_resuelta"
+    # Se subio el reporte de traslado generado por Syscafe (una sola vez, no se
+    # puede reemplazar) -- ver subir_reporte_syscafe en app/services/traslados_puntos.py.
+    TRASLADO_PUNTO_REPORTE_SYSCAFE = "traslado_punto_reporte_syscafe"
     # Alta o cambio hecho desde la pantalla /creador del dashboard (sedes,
     # empleados, puntos, supervisores, tipos de documento) -- el detalle dice
     # que se hizo; nunca incluye PIN ni hash. Ver app/services/usuarios.py.

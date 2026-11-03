@@ -3,12 +3,14 @@
 (docs/architecture.md): tablas aditivas, no toca entregas/sedes/empleados.
 """
 
+import io
 import re
 import unicodedata
 from datetime import date
 from difflib import SequenceMatcher
 
 import asyncpg
+from PIL import Image, UnidentifiedImageError
 
 from app.config import get_settings
 from app.db import get_pool
@@ -20,6 +22,7 @@ from app.models.traslado_punto import (
     TrasladoPuntoCrear,
     normalizar_numero_syscafe,
 )
+from app.services import storage_evidencia
 from app.services.logging_service import registrar_evento
 from app.services.talonarios import (
     TalonarioConflicto,
@@ -76,6 +79,23 @@ class SyscafeDuplicado(Exception):
     """Ese numero Syscafe ya esta asignado a otro traslado (indice unico
     parcial traslados_puntos_numero_syscafe_key, ver app/db.py) -- se traduce a
     409; el mensaje nombra la hoja del talonario del otro traslado."""
+
+
+class ReporteSyscafeYaExiste(Exception):
+    """El traslado ya tiene su reporte Syscafe (es inmutable) -- se traduce a 409."""
+
+
+class ArchivoReporteNoPermitido(Exception):
+    """Tipo de archivo distinto de jpg/png/webp/pdf, o contenido que no
+    corresponde al tipo declarado -- se traduce a 415."""
+
+
+class ArchivoReporteMuyGrande(Exception):
+    """El reporte supera MAX_BYTES_REPORTE_SYSCAFE -- se traduce a 413."""
+
+
+MAX_BYTES_REPORTE_SYSCAFE = 5 * 1024 * 1024
+_TIPOS_IMAGEN_REPORTE = {"image/jpeg", "image/png", "image/webp"}
 
 
 def _normalizar(texto: str) -> str:
@@ -677,6 +697,87 @@ async def asignar_numero_syscafe(traslado_id: str, valor: str | None, por: str |
         raise SyscafeDuplicado(f"El número Syscafe {valor} ya está asignado al traslado {referencia}") from exc
     if actualizado is None:
         raise TrasladoNoEncontrado("Traslado no encontrado")
+    items = await pool.fetch(
+        "select * from traslado_punto_items where traslado_id = $1::uuid order by id", traslado_id
+    )
+    resultado = dict(actualizado)
+    resultado["items"] = [dict(i) for i in items]
+    return resultado
+
+
+def _preparar_reporte_syscafe(contenido: bytes, content_type: str) -> tuple[bytes, str, str]:
+    """Valida el archivo y devuelve (bytes a guardar, mime final, extension).
+    Las imagenes se convierten a WebP; los PDF se guardan tal cual."""
+    if len(contenido) > MAX_BYTES_REPORTE_SYSCAFE:
+        raise ArchivoReporteMuyGrande("El archivo supera los 5 MB")
+    tipo = (content_type or "").split(";")[0].strip().lower()
+    if tipo == "application/pdf":
+        if not contenido.startswith(b"%PDF-"):
+            raise ArchivoReporteNoPermitido("El archivo no es un PDF válido")
+        return contenido, "application/pdf", "pdf"
+    if tipo in _TIPOS_IMAGEN_REPORTE:
+        try:
+            imagen = Image.open(io.BytesIO(contenido))
+            imagen.load()
+            salida = io.BytesIO()
+            imagen.convert("RGB").save(salida, format="WEBP", quality=85)
+        except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+            raise ArchivoReporteNoPermitido("El archivo no es una imagen válida") from exc
+        return salida.getvalue(), "image/webp", "webp"
+    raise ArchivoReporteNoPermitido("Solo se permiten imágenes (JPG, PNG, WebP) o PDF")
+
+
+async def subir_reporte_syscafe(traslado_id: str, contenido: bytes, content_type: str, por: str) -> dict:
+    """Guarda el reporte Syscafe del traslado (uno solo, inmutable).
+
+    Carrera segura sin transaccion larga: (1) la subida a Storage va sin upsert,
+    asi dos subidas a la misma ruta no se pisan; (2) el UPDATE exige
+    `reporte_syscafe_url is null`, asi solo una gana aunque las rutas difieran
+    (pdf vs webp). Quien pierde el UPDATE borra su objeto: nunca es el guardado,
+    porque si la ruta fuera la misma su subida habria fallado antes."""
+    pool = await get_pool()
+    traslado = await pool.fetchrow(
+        "select id, punto_destino_id, reporte_syscafe_url from traslados_puntos where id = $1::uuid",
+        traslado_id,
+    )
+    if traslado is None:
+        raise TrasladoNoEncontrado("Traslado no encontrado")
+    if traslado["reporte_syscafe_url"]:
+        raise ReporteSyscafeYaExiste("Este traslado ya tiene un reporte Syscafe")
+    datos, mime, extension = _preparar_reporte_syscafe(contenido, content_type)
+
+    ruta = f"reportes-syscafe/{traslado_id}.{extension}"
+    try:
+        await storage_evidencia.subir(ruta, datos, mime)
+    except storage_evidencia.ObjetoYaExiste as exc:
+        raise ReporteSyscafeYaExiste("Este traslado ya tiene un reporte Syscafe") from exc
+
+    try:
+        actualizado = await pool.fetchrow(
+            "update traslados_puntos set reporte_syscafe_url = $2, reporte_syscafe_tipo = $3,"
+            " reporte_syscafe_at = now(), reporte_syscafe_por = $4"
+            " where id = $1::uuid and reporte_syscafe_url is null returning *",
+            traslado_id,
+            storage_evidencia.url_publica(ruta),
+            mime,
+            por,
+        )
+    except Exception:
+        await storage_evidencia.borrar(ruta)
+        raise
+    if actualizado is None:
+        await storage_evidencia.borrar(ruta)
+        raise ReporteSyscafeYaExiste("Este traslado ya tiene un reporte Syscafe")
+
+    await registrar_evento(
+        EventoLog.TRASLADO_PUNTO_REPORTE_SYSCAFE,
+        entidad_tipo="traslado_punto",
+        entidad_id=traslado_id,
+        actor_id=por,
+        sede_id=str(traslado["punto_destino_id"]),
+        resultado="ok",
+        detalle={"tipo": mime},
+    )
     items = await pool.fetch(
         "select * from traslado_punto_items where traslado_id = $1::uuid order by id", traslado_id
     )

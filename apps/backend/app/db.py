@@ -554,6 +554,16 @@ create unique index if not exists traslados_puntos_numero_syscafe_key
 alter table traslados_puntos add column if not exists numero_syscafe_at timestamptz;
 alter table traslados_puntos add column if not exists numero_syscafe_por text;
 
+-- Reporte del traslado generado por Syscafe: un solo archivo (imagen WebP o
+-- PDF) por traslado, inmutable una vez subido. Vive en Storage (bucket
+-- evidencia, subpath reportes-syscafe/); aca solo la URL publica, el mime,
+-- cuando y quien (nombre para mostrar) lo subio. Ver subir_reporte_syscafe en
+-- app/services/traslados_puntos.py: el UPDATE exige reporte_syscafe_url is null.
+alter table traslados_puntos add column if not exists reporte_syscafe_url text;
+alter table traslados_puntos add column if not exists reporte_syscafe_tipo text;
+alter table traslados_puntos add column if not exists reporte_syscafe_at timestamptz;
+alter table traslados_puntos add column if not exists reporte_syscafe_por text;
+
 -- Tipos de documento que la IA de vision recibe como guia en el prompt (ver
 -- app/services/tipos_documento.py y vision.py) -- se administran desde
 -- /creador en el dashboard. No restringen entregas.tipo (sin check ahi): son
