@@ -833,6 +833,12 @@ export interface Traslado {
   // Numero del traslado en Syscafe (ej. "NBR-945"), lo registra Supervision;
   // null/undefined mientras este pendiente (ver asignarSyscafe).
   numero_syscafe?: string | null;
+  // Reporte generado por Syscafe, subido desde el dashboard: un solo archivo
+  // inmutable (image/webp o application/pdf); null/undefined si aun no hay.
+  reporte_syscafe_url?: string | null;
+  reporte_syscafe_tipo?: string | null;
+  reporte_syscafe_at?: string | null;
+  reporte_syscafe_por?: string | null;
 }
 
 /**

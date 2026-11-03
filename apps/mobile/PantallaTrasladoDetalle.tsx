@@ -13,6 +13,7 @@ import { etiquetaSyscafe, fetchTrasladoPunto, origenTraslado, referenciaTraslado
 import EditorSyscafe from './EditorSyscafe';
 import { mensajeError } from './errorMessages';
 import FirmasTraslado from './FirmasTraslado';
+import ReporteSyscafe from './ReporteSyscafe';
 import ResumenTraslado from './ResumenTraslado';
 import { useSesion } from './SesionContext';
 import { haceCuanto, textoVencimiento } from './SelectorFecha';
@@ -199,6 +200,8 @@ export default function PantallaTrasladoDetalle({ route }: Props) {
         {sesion.tipo === 'supervision' ? (
           <EditorSyscafe traslado={traslado} supervisorId={sesion.supervisor.id} onGuardado={setTraslado} />
         ) : null}
+
+        <ReporteSyscafe traslado={traslado} />
 
         {traslado.contenido_texto ? (
           <View style={{ gap: 8 }}>
