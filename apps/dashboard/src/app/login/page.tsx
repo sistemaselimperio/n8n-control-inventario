@@ -17,6 +17,18 @@ function destinoSeguro(siguiente: string | null): string {
   return siguiente;
 }
 
+// Mensaje para el usuario: nunca muestra el "Failed to fetch" del navegador.
+// fetch lanza TypeError cuando no hay conexion con el servidor; cualquier otro
+// error trae el mensaje del backend (credenciales, bloqueo por intentos, etc.).
+function mensajeLogin(err: unknown): string {
+  if (err instanceof TypeError) return "No se pudo conectar con el servidor. Inténtalo de nuevo.";
+  const mensaje = err instanceof Error ? err.message : "";
+  if (!mensaje || /usuario o contraseña/i.test(mensaje)) {
+    return "Usuario o contraseña incorrectos. Inténtalo de nuevo.";
+  }
+  return mensaje;
+}
+
 function FormularioLogin() {
   const { listo, sesion, login } = useSesion();
   const router = useRouter();
@@ -41,7 +53,7 @@ function FormularioLogin() {
     try {
       await login(usuario, password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo iniciar sesión");
+      setError(mensajeLogin(err));
       setEnviando(false);
     }
   };
@@ -95,7 +107,7 @@ function FormularioLogin() {
           </div>
           {error ? (
             <p role="alert" className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger-fg">
-              {error}. Revisa el usuario y la contraseña e inténtalo de nuevo.
+              {error}
             </p>
           ) : null}
           <button

@@ -57,10 +57,23 @@ describe("pagina de login", () => {
     await userEvent.type(screen.getByLabelText("Usuario"), "ana");
     await userEvent.type(screen.getByLabelText("Contraseña"), "mala");
     await userEvent.click(screen.getByRole("button", { name: "Entrar" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Usuario o contraseña incorrectos");
+    const alerta = await screen.findByRole("alert");
+    expect(alerta).toHaveTextContent("Usuario o contraseña incorrectos. Inténtalo de nuevo.");
+    expect(alerta).not.toHaveTextContent("Revisa el usuario");
     expect(leerSesion()).toBeNull();
     expect(screen.getByRole("button", { name: "Entrar" })).toBeEnabled();
     expect(nav.replace).not.toHaveBeenCalled();
+  });
+
+  it("si no hay conexion con el servidor no muestra 'Failed to fetch'", async () => {
+    api.loginDashboard.mockRejectedValue(new TypeError("Failed to fetch"));
+    montar();
+    await userEvent.type(screen.getByLabelText("Usuario"), "ana");
+    await userEvent.type(screen.getByLabelText("Contraseña"), "x");
+    await userEvent.click(screen.getByRole("button", { name: "Entrar" }));
+    const alerta = await screen.findByRole("alert");
+    expect(alerta).toHaveTextContent("No se pudo conectar con el servidor. Inténtalo de nuevo.");
+    expect(alerta).not.toHaveTextContent("Failed to fetch");
   });
 
   it("muestra el mensaje de bloqueo por intentos (423)", async () => {
