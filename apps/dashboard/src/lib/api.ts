@@ -435,7 +435,7 @@ export async function actualizarProducto(
 
 // Traslados entre puntos con su numero Syscafe (ver GET /traslados-puntos/syscafe
 // en el backend): traslados y hojas anuladas del talonario, pendientes primero.
-// Se llena desde la app movil (Supervision) o desde la pagina /traslados.
+// Se llena desde la pagina /traslados.
 // "directo": mercancia que llega del proveedor al punto (sin origen ni despacho).
 export type TipoTraslado = "entre_puntos" | "directo";
 
@@ -459,6 +459,8 @@ export interface FilaTrasladoSyscafe {
   // Solo en las anuladas.
   motivo: string | null;
   anulado_por_nombre: string | null;
+  // Estado de la novedad del traslado: null si no tuvo novedad (y en las anuladas).
+  novedad_estado?: "pendiente" | "resuelta" | null;
 }
 
 // desde/hasta: "YYYY-MM-DD" inclusivos (fecha del traslado; en anuladas, la de creacion).
@@ -491,6 +493,7 @@ export interface TrasladoDetalle {
   id: string;
   consecutivo: number;
   tipo: TipoTraslado;
+  punto_destino_id?: string | null;
   numero_talonario: string | null;
   talonario_id: string | null;
   numero_syscafe: string | null;
@@ -512,6 +515,7 @@ export interface TrasladoDetalle {
   solucion: string | null;
   consecutivo_solucion: string | null;
   solucionado_por_nombre: string | null;
+  solucionado_por_usuario?: string | null;
   solucionado_at: string | null;
   creado_por_nombre: string | null;
   created_at: string;
@@ -603,28 +607,44 @@ interface TrasladoCrudo {
   estado: string;
   fecha: string;
   created_at: string;
+  novedad_estado?: "pendiente" | "resuelta" | null;
+  consecutivo_solucion?: string | null;
 }
+
+const aFilaSyscafe = (t: TrasladoCrudo): FilaTrasladoSyscafe => ({
+  tipo: "traslado" as const,
+  id: t.id,
+  consecutivo: t.consecutivo,
+  numero_talonario: t.numero_talonario,
+  talonario_id: t.talonario_id,
+  numero_syscafe: t.numero_syscafe,
+  punto_origen_id: t.punto_origen_id,
+  punto_origen_nombre: t.punto_origen_nombre,
+  tipo_traslado: t.tipo,
+  punto_destino_id: t.punto_destino_id,
+  punto_destino_nombre: t.punto_destino_nombre,
+  estado: t.estado,
+  fecha: t.fecha,
+  created_at: t.created_at,
+  motivo: null,
+  anulado_por_nombre: null,
+  novedad_estado: t.novedad_estado ?? null,
+});
 
 export const listarTrasladosRecibidos = async (puntoId: string): Promise<FilaTrasladoSyscafe[]> => {
   const crudos = await getJson<TrasladoCrudo[]>(`/traslados-puntos?destino_id=${encodeURIComponent(puntoId)}`);
-  return crudos.map((t) => ({
-    tipo: "traslado" as const,
-    id: t.id,
-    consecutivo: t.consecutivo,
-    numero_talonario: t.numero_talonario,
-    talonario_id: t.talonario_id,
-    numero_syscafe: t.numero_syscafe,
-    punto_origen_id: t.punto_origen_id,
-    punto_origen_nombre: t.punto_origen_nombre,
-    tipo_traslado: t.tipo,
-    punto_destino_id: t.punto_destino_id,
-    punto_destino_nombre: t.punto_destino_nombre,
-    estado: t.estado,
-    fecha: t.fecha,
-    created_at: t.created_at,
-    motivo: null,
-    anulado_por_nombre: null,
-  }));
+  return crudos.map(aFilaSyscafe);
+};
+
+// Busca novedades ya resueltas por consecutivo (ej. "NPT-1234"), coincidencia
+// parcial; devuelve filas listas para la tabla y el detalle de /traslados.
+export interface FilaConsecutivo extends FilaTrasladoSyscafe {
+  consecutivo_solucion: string | null;
+}
+
+export const buscarConsecutivo = async (q: string): Promise<FilaConsecutivo[]> => {
+  const crudos = await getJson<TrasladoCrudo[]>(`/traslados-puntos/buscar-consecutivo?q=${encodeURIComponent(q)}`);
+  return crudos.map((t) => ({ ...aFilaSyscafe(t), consecutivo_solucion: t.consecutivo_solucion ?? null }));
 };
 
 export const fetchPuntosPublicos = () => getJson<{ id: string; nombre: string; codigo: string | null }[]>("/puntos");
@@ -641,6 +661,30 @@ export async function asignarSyscafeDashboard(trasladoId: string, numeroSyscafe:
   if (!res.ok) {
     throw new Error(await mensajeDeError(res, "No se pudo guardar el número Syscafe"));
   }
+}
+
+// Carga la solucion de una novedad pendiente (POST .../solucion/dashboard).
+// Requiere sesion admin/supervisor de traslados; 409 si ya la resolvieron o si
+// el consecutivo ya lo usa otra novedad, 422 si el codigo de punto no es valido.
+export interface SolucionNovedadDatos {
+  solucion: string;
+  consecutivo_codigo: string;
+  consecutivo_numero: string;
+}
+
+export async function resolverNovedadDashboard(
+  trasladoId: string,
+  datos: SolucionNovedadDatos,
+): Promise<TrasladoDetalle> {
+  const res = await apiFetch(`/traslados-puntos/${trasladoId}/solucion/dashboard`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(datos),
+  });
+  if (!res.ok) {
+    throw new Error(await mensajeDeError(res, "No se pudo guardar la solución"));
+  }
+  return res.json();
 }
 
 // Sube el reporte Syscafe de un traslado (multipart, campo `archivo`). Un solo
@@ -788,12 +832,6 @@ export interface UsuarioPuntoAdmin {
   estado: "activo" | "inactivo";
 }
 
-export interface SupervisorAdmin {
-  id: string;
-  nombre: string;
-  estado: "activo" | "inactivo";
-}
-
 export interface TipoDocumentoAdmin {
   codigo: string;
   descripcion: string;
@@ -838,17 +876,6 @@ export const actualizarUsuarioPunto = (id: string,
 export const eliminarUsuarioPunto = (id: string) => eliminarAdmin(`/puntos/usuarios/${id}`);
 export const resetearPinUsuarioPunto = (id: string, pin: string) =>
   adminFetch<{ ok: boolean }>(`/puntos/usuarios/${id}/pin`, { method: "POST", body: { pin } });
-
-export const fetchSupervisoresAdmin = () =>
-  adminFetch<SupervisorAdmin[]>("/supervisores?incluir_inactivos=true");
-export const crearSupervisor = (datos: { nombre: string; pin: string }) =>
-  adminFetch<SupervisorAdmin>("/supervisores", { method: "POST", body: datos });
-export const actualizarSupervisor = (id: string,
-  cambios: { nombre?: string; estado?: "activo" | "inactivo" }
-) => adminFetch<SupervisorAdmin>(`/supervisores/${id}`, { method: "PATCH", body: cambios });
-export const eliminarSupervisor = (id: string) => eliminarAdmin(`/supervisores/${id}`);
-export const resetearPinSupervisor = (id: string, pin: string) =>
-  adminFetch<{ ok: boolean }>(`/supervisores/${id}/pin`, { method: "POST", body: { pin } });
 
 // DELETE /productos/{id}: quita el producto del catalogo (sin historial que
 // proteger). Si una entrega futura trae el mismo codigo, se vuelve a crear solo.

@@ -1,8 +1,8 @@
 "use client";
 
 // Administracion de sedes, empleados (bodega), puntos y sus usuarios,
-// supervisores, tipos de documento y usuarios del dashboard -- reemplaza los
-// scripts de alta (scripts/crear_supervisor.py, crear_punto.py) y los curl a
+// tipos de documento y usuarios del dashboard -- reemplaza los
+// scripts de alta (scripts/crear_punto.py) y los curl a
 // POST /empleados. Solo para el rol admin de la sesion del panel (los
 // endpoints exigen el Bearer, ver apiFetch en lib/api.ts). "Eliminar" borra de
 // verdad solo un registro que nunca se uso; si tiene historial (traslados,
@@ -19,16 +19,14 @@ import { claseBoton, EncabezadoPagina, Icono } from "@/components/ui";
 import { SeccionSedes } from "@/components/creador/SeccionSedes";
 import { SeccionEmpleados } from "@/components/creador/SeccionEmpleados";
 import { SeccionPuntos } from "@/components/creador/SeccionPuntos";
-import { SeccionSupervisores } from "@/components/creador/SeccionSupervisores";
 import { SeccionTipos } from "@/components/creador/SeccionTipos";
 import { SeccionUsuariosDashboard } from "@/components/creador/SeccionUsuariosDashboard";
 
-type Pestana = "sedes" | "empleados" | "puntos" | "supervisores" | "tipos" | "usuarios";
+type Pestana = "sedes" | "empleados" | "puntos" | "tipos" | "usuarios";
 const PESTANAS: { id: Pestana; etiqueta: string }[] = [
   { id: "sedes", etiqueta: "Sedes" },
   { id: "empleados", etiqueta: "Empleados (bodega)" },
   { id: "puntos", etiqueta: "Puntos y usuarios" },
-  { id: "supervisores", etiqueta: "Supervisores" },
   { id: "tipos", etiqueta: "Tipos de documento" },
   { id: "usuarios", etiqueta: "Usuarios del dashboard" },
 ];
@@ -58,7 +56,7 @@ export default function CreadorPage() {
     <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8">
       <EncabezadoPagina
         titulo="Administración"
-        descripcion="Gestiona sedes, empleados, puntos, supervisores, tipos de documento y usuarios. Eliminar solo funciona con registros sin uso; si ya tienen historial, desactívalos."
+        descripcion="Gestiona sedes, empleados, puntos, tipos de documento y usuarios. Eliminar solo funciona con registros sin uso; si ya tienen historial, desactívalos."
       />
 
       {/* Indice de secciones: botones nativos (se alcanzan con Tab y se activan
@@ -90,7 +88,6 @@ export default function CreadorPage() {
       {pestana === "sedes" ? <SeccionSedes /> : null}
       {pestana === "empleados" ? <SeccionEmpleados /> : null}
       {pestana === "puntos" ? <SeccionPuntos /> : null}
-      {pestana === "supervisores" ? <SeccionSupervisores /> : null}
       {pestana === "tipos" ? <SeccionTipos /> : null}
       {pestana === "usuarios" ? <SeccionUsuariosDashboard /> : null}
     </main>

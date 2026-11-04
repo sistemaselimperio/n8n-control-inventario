@@ -432,6 +432,64 @@ describe("productos y traslados", () => {
     await expect(api.asignarSyscafeDashboard("t1", "NBR-1")).rejects.toThrow("Ya lo tiene la hoja A 12");
   });
 
+  it("resolverNovedadDashboard envia la solucion y el consecutivo", async () => {
+    const fetchMock = mockFetch(respuestaJson({ id: "t1", novedad_estado: "resuelta" }));
+    const res = await api.resolverNovedadDashboard("t1", {
+      solucion: "Se repuso",
+      consecutivo_codigo: "NPT",
+      consecutivo_numero: "0012",
+    });
+    const { url, init } = ultimaLlamada(fetchMock);
+    expect(url).toBe(`${BASE}/traslados-puntos/t1/solucion/dashboard`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({
+      solucion: "Se repuso",
+      consecutivo_codigo: "NPT",
+      consecutivo_numero: "0012",
+    });
+    expect(res.novedad_estado).toBe("resuelta");
+  });
+
+  it("resolverNovedadDashboard muestra el 409 del backend", async () => {
+    mockFetch(respuestaJson({ detail: "Ese consecutivo ya está registrado" }, 409));
+    await expect(
+      api.resolverNovedadDashboard("t1", { solucion: "x", consecutivo_codigo: "NPT", consecutivo_numero: "1" }),
+    ).rejects.toThrow("Ese consecutivo ya está registrado");
+  });
+
+  it("buscarConsecutivo codifica la consulta y normaliza las filas", async () => {
+    const fetchMock = mockFetch(
+      respuestaJson([
+        {
+          id: "t1",
+          consecutivo: 5,
+          tipo: "entre_puntos",
+          numero_talonario: "A 6300",
+          talonario_id: null,
+          numero_syscafe: null,
+          punto_origen_id: "p1",
+          punto_origen_nombre: "CFC",
+          punto_destino_id: "p2",
+          punto_destino_nombre: "BDG",
+          estado: "recibido_con_novedad",
+          fecha: "2026-03-05",
+          created_at: "2026-03-05T10:00:00Z",
+          novedad_estado: "resuelta",
+          consecutivo_solucion: "NPT-0012",
+        },
+      ]),
+    );
+    const filas = await api.buscarConsecutivo("npt 12");
+    expect(ultimaLlamada(fetchMock).url).toBe(`${BASE}/traslados-puntos/buscar-consecutivo?q=npt%2012`);
+    expect(filas[0]).toMatchObject({
+      tipo: "traslado",
+      id: "t1",
+      tipo_traslado: "entre_puntos",
+      novedad_estado: "resuelta",
+      consecutivo_solucion: "NPT-0012",
+    });
+  });
+
   it("subirReporteSyscafeDashboard envia multipart con el archivo, sin Content-Type manual", async () => {
     const fetchMock = mockFetch(respuestaJson({ id: "t1", reporte_syscafe_url: "https://x/r.pdf" }));
     const archivo = new File(["%PDF-1.4"], "reporte.pdf", { type: "application/pdf" });
@@ -468,7 +526,6 @@ describe("administracion (adminFetch)", () => {
     ["fetchEmpleadosAdmin", () => api.fetchEmpleadosAdmin(), "GET", "/empleados?incluir_inactivos=true"],
     ["fetchPuntosAdmin", () => api.fetchPuntosAdmin(), "GET", "/puntos?incluir_inactivos=true"],
     ["fetchUsuariosPuntoAdmin", () => api.fetchUsuariosPuntoAdmin("p1"), "GET", "/puntos/p1/usuarios?incluir_inactivos=true"],
-    ["fetchSupervisoresAdmin", () => api.fetchSupervisoresAdmin(), "GET", "/supervisores?incluir_inactivos=true"],
     ["fetchTiposDocumentoAdmin", () => api.fetchTiposDocumentoAdmin(), "GET", "/tipos-documento?incluir_inactivos=true"],
     ["fetchUsuariosDashboard", () => api.fetchUsuariosDashboard(), "GET", "/dashboard/usuarios"],
     ["crearSede", () => api.crearSede({ nombre: "N", codigo: "C" }), "POST", "/sedes", { nombre: "N", codigo: "C" }],
@@ -497,10 +554,6 @@ describe("administracion (adminFetch)", () => {
     ["actualizarUsuarioPunto", () => api.actualizarUsuarioPunto("u1", { nombre: "X" }), "PATCH", "/puntos/usuarios/u1", { nombre: "X" }],
     ["eliminarUsuarioPunto", () => api.eliminarUsuarioPunto("u1"), "DELETE", "/puntos/usuarios/u1"],
     ["resetearPinUsuarioPunto", () => api.resetearPinUsuarioPunto("u1", "9999"), "POST", "/puntos/usuarios/u1/pin", { pin: "9999" }],
-    ["crearSupervisor", () => api.crearSupervisor({ nombre: "S", pin: "1234" }), "POST", "/supervisores", { nombre: "S", pin: "1234" }],
-    ["actualizarSupervisor", () => api.actualizarSupervisor("v1", { estado: "activo" }), "PATCH", "/supervisores/v1", { estado: "activo" }],
-    ["eliminarSupervisor", () => api.eliminarSupervisor("v1"), "DELETE", "/supervisores/v1"],
-    ["resetearPinSupervisor", () => api.resetearPinSupervisor("v1", "1111"), "POST", "/supervisores/v1/pin", { pin: "1111" }],
     ["eliminarProducto", () => api.eliminarProducto("a/b"), "DELETE", "/productos/a%2Fb"],
     ["eliminarTipoDocumento", () => api.eliminarTipoDocumento("TB9"), "DELETE", "/tipos-documento/TB9"],
     [

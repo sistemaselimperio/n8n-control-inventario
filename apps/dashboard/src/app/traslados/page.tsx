@@ -8,9 +8,10 @@
 // corrigen el Syscafe en una caja pequeña que se abre encima de la celda
 // (CajaSyscafe: prefijo + indicativo) o desde el detalle; consulta lo ve en solo lectura.
 
-import { useCallback, useDeferredValue, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import {
+  buscarConsecutivo,
   fetchActividadTraslados,
   fetchPuntosPublicos,
   listarTrasladosSyscafe,
@@ -88,14 +89,24 @@ function textoBusqueda(f: FilaTrasladoSyscafe): string {
   );
 }
 
-type Vista = "todos" | "pendientes" | "en_transito" | "recibido_con_novedad" | "recibido" | "anulada";
+type Vista =
+  | "todos"
+  | "pendientes"
+  | "en_transito"
+  | "novedad_pendiente"
+  | "novedad_resuelta"
+  | "recibido"
+  | "anulada";
+
+type FiltroNovedad = "" | "pendiente" | "resuelta";
 
 // Vistas rapidas en el orden del trabajo: lo que falta primero.
 const VISTAS: { valor: Vista; texto: string; tono?: TonoPildora }[] = [
   { valor: "todos", texto: "Todos" },
   { valor: "pendientes", texto: "Pendiente N° Traslado", tono: "warn" },
   { valor: "en_transito", texto: "En tránsito", tono: ESTADOS.en_transito.tono },
-  { valor: "recibido_con_novedad", texto: "Con novedad", tono: ESTADOS.recibido_con_novedad.tono },
+  { valor: "novedad_pendiente", texto: "Novedad pendiente", tono: "error" },
+  { valor: "novedad_resuelta", texto: "Novedad resuelta", tono: "ok" },
   { valor: "recibido", texto: "Recibidos", tono: ESTADOS.recibido.tono },
   { valor: "anulada", texto: "Anuladas", tono: ESTADOS.anulada.tono },
 ];
@@ -109,6 +120,8 @@ export default function TrasladosPage() {
   // Letra del talonario ("A", "V") para ver solo una empresa; "" = todas.
   const [empresa, setEmpresa] = useState("");
   const [soloPendientes, setSoloPendientes] = useState(false);
+  // Novedades: "pendiente" o "resuelta" (segun novedad_estado); "" = sin filtrar.
+  const [novedad, setNovedad] = useState<FiltroNovedad>("");
   // Clase de traslado: entre puntos o llegada directa del proveedor; "" = todos.
   const [tipo, setTipo] = useState<"" | TipoTraslado>("");
   const [fechaDesde, setFechaDesde] = useState("");
@@ -117,6 +130,18 @@ export default function TrasladosPage() {
   const [modoFecha, setModoFecha] = useState<ModoFecha>("todas");
   const [busqueda, setBusqueda] = useState("");
   const busquedaDiferida = useDeferredValue(busqueda);
+  // Busqueda por consecutivo de la solucion (ej. NPT-1234): consulta al backend
+  // con una pausa de 400 ms para no pedir en cada tecla.
+  const [consecutivo, setConsecutivo] = useState("");
+  const [consecutivoConsulta, setConsecutivoConsulta] = useState("");
+  useEffect(() => {
+    const espera = setTimeout(() => setConsecutivoConsulta(consecutivo.trim()), 400);
+    return () => clearTimeout(espera);
+  }, [consecutivo]);
+  const { data: porConsecutivo, error: errorConsecutivo } = useSWR(
+    consecutivoConsulta ? ["buscar-consecutivo", consecutivoConsulta] : null,
+    () => buscarConsecutivo(consecutivoConsulta),
+  );
 
   const { data: puntos } = useSWR("puntos-publicos", fetchPuntosPublicos);
   const {
@@ -153,10 +178,11 @@ export default function TrasladosPage() {
       (filas ?? []).filter(
         (f) =>
           (!estado || f.estado === estado) &&
+          (!novedad || f.novedad_estado === novedad) &&
           (!empresa || letraTalonario(f) === empresa) &&
           (!tipo || f.tipo_traslado === tipo),
       ),
-    [filas, estado, empresa, tipo],
+    [filas, estado, novedad, empresa, tipo],
   );
   const visibles = useMemo(() => {
     const q = normalizar(busquedaDiferida);
@@ -171,10 +197,15 @@ export default function TrasladosPage() {
 
   // Vista rapida: "pendientes" es un filtro del servidor (sin numero Syscafe);
   // las demas filtran por estado en el cliente.
-  const vista: Vista = soloPendientes ? "pendientes" : ((estado || "todos") as Vista);
+  const vista: Vista = soloPendientes
+    ? "pendientes"
+    : novedad
+      ? `novedad_${novedad}`
+      : ((estado || "todos") as Vista);
   const elegirVista = (v: Vista) => {
     setSoloPendientes(v === "pendientes");
-    setEstado(v === "todos" || v === "pendientes" ? "" : v);
+    setNovedad(v === "novedad_pendiente" ? "pendiente" : v === "novedad_resuelta" ? "resuelta" : "");
+    setEstado(["todos", "pendientes", "novedad_pendiente", "novedad_resuelta"].includes(v) ? "" : v);
   };
   const conteos = useMemo(() => {
     const lista = filas ?? [];
@@ -183,7 +214,8 @@ export default function TrasladosPage() {
       todos: lista.length,
       pendientes: lista.filter((f) => !f.numero_syscafe && f.tipo !== "anulada").length,
       en_transito: porEstadoDe("en_transito"),
-      recibido_con_novedad: porEstadoDe("recibido_con_novedad"),
+      novedad_pendiente: lista.filter((f) => f.novedad_estado === "pendiente").length,
+      novedad_resuelta: lista.filter((f) => f.novedad_estado === "resuelta").length,
       recibido: porEstadoDe("recibido"),
       anulada: porEstadoDe("anulada"),
     } satisfies Record<Vista, number>;
@@ -197,13 +229,14 @@ export default function TrasladosPage() {
   };
 
   const hayFiltros = Boolean(
-    puntoId || estado || empresa || soloPendientes || tipo || fechaDesde || fechaHasta || busqueda,
+    puntoId || estado || novedad || empresa || soloPendientes || tipo || fechaDesde || fechaHasta || busqueda,
   );
   const limpiarFiltros = () => {
     setPuntoId("");
     setEstado("");
     setEmpresa("");
     setSoloPendientes(false);
+    setNovedad("");
     setTipo("");
     setModoFecha("todas");
     setFechaDesde("");
@@ -314,6 +347,50 @@ export default function TrasladosPage() {
           />
 
           {hayFiltros ? <BotonLimpiarFiltros onClick={limpiarFiltros} /> : null}
+        </div>
+
+        <div className="flex flex-col gap-2 border-b border-line px-4 py-3 sm:px-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="traslados-consecutivo" className="text-sm text-muted">
+              Buscar por consecutivo
+            </label>
+            <input
+              id="traslados-consecutivo"
+              type="search"
+              value={consecutivo}
+              onChange={(e) => setConsecutivo(e.target.value)}
+              placeholder="Ej. NPT-1234"
+              className={`${claseCampo} cifra w-full uppercase sm:w-56`}
+            />
+          </div>
+          {consecutivoConsulta ? (
+            <div role="region" aria-label="Resultados por consecutivo" className="flex flex-col gap-1">
+              {errorConsecutivo ? (
+                <p className="text-sm text-danger-fg">No se pudo buscar el consecutivo.</p>
+              ) : !porConsecutivo ? (
+                <p className="text-sm text-muted">Buscando…</p>
+              ) : porConsecutivo.length === 0 ? (
+                <p className="text-sm text-muted">Ninguna novedad resuelta coincide con «{consecutivoConsulta}».</p>
+              ) : (
+                <ul className="flex flex-col divide-y divide-line rounded-md border border-line">
+                  {porConsecutivo.map((r) => (
+                    <li key={r.id}>
+                      <button
+                        type="button"
+                        onClick={() => setDetalleId(r.id)}
+                        className="flex w-full cursor-pointer flex-wrap items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-surface-2"
+                      >
+                        <span className="cifra text-ink">{r.consecutivo_solucion ?? "—"}</span>
+                        <span className="text-muted">
+                          {referencia(r)} · {r.punto_origen_nombre ?? ORIGEN_DIRECTO} → {r.punto_destino_nombre ?? "—"}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : null}
         </div>
 
         <div className="overflow-hidden rounded-b-lg">

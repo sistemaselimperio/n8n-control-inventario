@@ -16,6 +16,7 @@ import { ErrorConReintento, Icono, Pildora, type TonoPildora } from "@/component
 import { Folio } from "@/components/entregas/Folio";
 import { empresaTalonario, ESTADOS, fechaCorta, fechaHora, ORIGEN_DIRECTO, referencia } from "./compartido";
 import { Dato, ModalBase } from "./ModalBase";
+import { FormSolucionNovedad } from "./FormSolucionNovedad";
 import { SeccionSyscafe } from "./SeccionSyscafe";
 
 export function ModalDetalleTraslado({
@@ -139,7 +140,14 @@ export function ModalDetalleTraslado({
           ) : null}
           {t.observaciones ? <Dato etiqueta="Observaciones">{t.observaciones}</Dato> : null}
           <ConstanciaRecepcion t={t} />
-          <NovedadYSolucion t={t} />
+          <NovedadYSolucion
+            t={t}
+            puedeResolver={puedeAsignar}
+            onResuelta={async () => {
+              await mutate();
+              onCambio();
+            }}
+          />
           <Historial eventos={historial} />
           <Imagenes t={t} />
         </>
@@ -258,7 +266,15 @@ function Historial({ eventos }: { eventos: EventoHistorialTraslado[] | undefined
   );
 }
 
-function NovedadYSolucion({ t }: { t: TrasladoDetalle }) {
+function NovedadYSolucion({
+  t,
+  puedeResolver,
+  onResuelta,
+}: {
+  t: TrasladoDetalle;
+  puedeResolver: boolean;
+  onResuelta: () => void | Promise<void>;
+}) {
   if (!t.novedad && !t.novedad_estado) return null;
   const resuelta = t.novedad_estado === "resuelta";
   return (
@@ -268,6 +284,9 @@ function NovedadYSolucion({ t }: { t: TrasladoDetalle }) {
         <Pildora tono={resuelta ? "ok" : "error"}>{resuelta ? "Resuelta" : "Pendiente"}</Pildora>
       </div>
       <p className="text-sm text-ink">{t.novedad ?? "Diferencia de cantidad en la recepción."}</p>
+      {t.novedad_estado === "pendiente" && puedeResolver ? (
+        <FormSolucionNovedad trasladoId={t.id} puntoDestinoId={t.punto_destino_id} onResuelta={onResuelta} />
+      ) : null}
       {resuelta ? (
         <div className="flex flex-col gap-1 border-t border-line pt-3">
           <span className="text-xs font-medium text-muted">

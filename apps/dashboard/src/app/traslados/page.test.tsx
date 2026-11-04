@@ -7,6 +7,7 @@ import TrasladosPage from "./page";
 
 const api = vi.hoisted(() => ({
   asignarSyscafeDashboard: vi.fn(),
+  buscarConsecutivo: vi.fn(),
   fetchActividadTraslados: vi.fn(),
   fetchPuntosPublicos: vi.fn(),
   listarTrasladosSyscafe: vi.fn(),
@@ -79,6 +80,7 @@ const FILAS = [
     punto_origen_id: null,
     punto_origen_nombre: null,
     estado: "recibido_con_novedad",
+    novedad_estado: "pendiente",
     punto_destino_nombre: "Peñalisa",
   }),
   fila({ tipo: "anulada", id: "a1", consecutivo: null, numero_talonario: "A 11", motivo: "Hoja danada", estado: "anulada" }),
@@ -338,5 +340,61 @@ describe("pagina de traslados: detalle", () => {
     await screen.findByRole("table");
     await userEvent.click(within(filasTabla()[3]).getByText("A 11"));
     expect(screen.getByText("anulada a1")).toBeInTheDocument();
+  });
+});
+
+describe("pagina de traslados: novedades", () => {
+  it("separa las novedades pendientes de las resueltas segun novedad_estado", async () => {
+    api.listarTrasladosSyscafe.mockResolvedValue([
+      ...FILAS,
+      fila({ id: "t5", consecutivo: 5, estado: "recibido_con_novedad", novedad_estado: "resuelta", punto_destino_nombre: "Oeste" }),
+    ]);
+    montar();
+    await screen.findByRole("table");
+    expect(chip("Vista", /^Novedad pendiente/)).toHaveTextContent("1");
+    expect(chip("Vista", /^Novedad resuelta/)).toHaveTextContent("1");
+    await userEvent.click(chip("Vista", /^Novedad pendiente/));
+    expect(filasTabla()).toHaveLength(1);
+    expect(within(filasTabla()[0]).getByText("TP-000003")).toBeInTheDocument();
+    await userEvent.click(chip("Vista", /^Novedad resuelta/));
+    expect(filasTabla()).toHaveLength(1);
+    expect(within(filasTabla()[0]).getByText("TP-000005")).toBeInTheDocument();
+    await userEvent.click(chip("Vista", /^Todos/));
+    expect(filasTabla()).toHaveLength(5);
+  });
+});
+
+describe("pagina de traslados: buscar por consecutivo", () => {
+  const resultado = {
+    ...fila({ id: "t9", consecutivo: 9, estado: "recibido_con_novedad", novedad_estado: "resuelta" }),
+    consecutivo_solucion: "NPT-0012",
+  };
+
+  it("busca con pausa, lista las coincidencias y abre el detalle", async () => {
+    api.buscarConsecutivo.mockResolvedValue([resultado]);
+    montar();
+    await screen.findByRole("table");
+    await userEvent.type(screen.getByLabelText("Buscar por consecutivo"), "npt-12");
+    expect(api.buscarConsecutivo).not.toHaveBeenCalled(); // aun dentro de la pausa
+    const region = await screen.findByRole("region", { name: "Resultados por consecutivo" });
+    await waitFor(() => expect(api.buscarConsecutivo).toHaveBeenCalledTimes(1));
+    expect(api.buscarConsecutivo).toHaveBeenCalledWith("npt-12");
+    await userEvent.click(await within(region).findByRole("button", { name: /NPT-0012/ }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("detalle t9");
+  });
+
+  it("sin coincidencias lo dice", async () => {
+    api.buscarConsecutivo.mockResolvedValue([]);
+    montar();
+    await screen.findByRole("table");
+    await userEvent.type(screen.getByLabelText("Buscar por consecutivo"), "zzz");
+    expect(await screen.findByText(/Ninguna novedad resuelta coincide con «zzz»/)).toBeInTheDocument();
+  });
+
+  it("con el campo vacio no consulta", async () => {
+    montar();
+    await screen.findByRole("table");
+    expect(api.buscarConsecutivo).not.toHaveBeenCalled();
+    expect(screen.queryByRole("region", { name: "Resultados por consecutivo" })).toBeNull();
   });
 });
