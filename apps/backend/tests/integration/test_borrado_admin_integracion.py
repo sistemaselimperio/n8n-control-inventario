@@ -7,7 +7,7 @@ referencias blandas por texto) y que el delete respete el resto de la base.
 
 from __future__ import annotations
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
