@@ -873,6 +873,7 @@ async def test_listar_syscafe_pasa_los_filtros_y_serializa_los_uuid(pool, conn):
     (_, sql, args) = conn.sql_ejecutado("from traslados_puntos t")[0]
     assert args == (PUNTO_ORIGEN, date(2026, 1, 1), date(2026, 1, 31))
     assert "union all" in sql  # incluye las hojas anuladas
+    assert "t.novedad_estado" in sql  # el dashboard separa novedades pendientes y resueltas
 
 
 async def test_listar_syscafe_pendientes_excluye_las_anuladas(pool, conn):
