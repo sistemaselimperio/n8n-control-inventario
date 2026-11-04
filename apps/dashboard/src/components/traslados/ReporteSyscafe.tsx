@@ -93,11 +93,11 @@ export function ReporteSyscafe({
     setSubiendo(true);
     try {
       await subirReporteSyscafeDashboard(traslado.id, elegido);
-      toast.success("Reporte Syscafe subido");
+      toast.success("Reporte de traslado subido");
       descartar();
       onSubido();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo subir el reporte Syscafe");
+      toast.error(err instanceof Error ? err.message : "No se pudo subir el reporte de traslado");
     } finally {
       setSubiendo(false);
     }
@@ -114,9 +114,9 @@ export function ReporteSyscafe({
             Ver PDF
           </a>
         ) : (
-          <a href={url} target="_blank" rel="noopener noreferrer" aria-label="Abrir reporte Syscafe" className="inline-block">
+          <a href={url} target="_blank" rel="noopener noreferrer" aria-label="Abrir reporte de traslado" className="inline-block">
             {/* eslint-disable-next-line @next/next/no-img-element -- URL publica de Storage, igual que en Imagenes */}
-            <img src={url} alt="Reporte Syscafe" loading="lazy" className={claseMiniatura} />
+            <img src={url} alt="Reporte de traslado" loading="lazy" className={claseMiniatura} />
           </a>
         )}
         {traslado.reporte_syscafe_at ? (
@@ -165,7 +165,7 @@ export function ReporteSyscafe({
     <div
       role="button"
       tabIndex={0}
-      aria-label="Subir reporte Syscafe"
+      aria-label="Subir reporte de traslado"
       onClick={() => entrada.current?.click()}
       onKeyDown={(ev) => {
         if (ev.key === "Enter" || ev.key === " ") {
@@ -190,7 +190,7 @@ export function ReporteSyscafe({
         ref={entrada}
         type="file"
         accept="image/jpeg,image/png,image/webp,application/pdf"
-        aria-label="Archivo del reporte Syscafe"
+        aria-label="Archivo del reporte de traslado"
         onClick={(ev) => ev.stopPropagation()}
         onChange={(e) => alElegir(e.target.files?.[0])}
         className="sr-only"

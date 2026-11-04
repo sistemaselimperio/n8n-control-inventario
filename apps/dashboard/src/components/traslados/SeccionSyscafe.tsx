@@ -65,11 +65,11 @@ export function SeccionSyscafe({
     setGuardando(true);
     try {
       await asignarSyscafeDashboard(t.id, nuevo);
-      toast.success(nuevo ? `Syscafe ${nuevo} guardado` : "Número Syscafe borrado");
+      toast.success(nuevo ? `Número de traslado ${nuevo} guardado` : "Número de traslado borrado");
       setEditando(false);
       await onCambio();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo guardar el número Syscafe");
+      toast.error(err instanceof Error ? err.message : "No se pudo guardar el número de traslado");
     } finally {
       setGuardando(false);
     }
@@ -92,7 +92,7 @@ export function SeccionSyscafe({
     <section aria-labelledby={`syscafe-${t.id}`} className="flex flex-col gap-4 rounded-lg border border-line bg-surface-2/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 id={`syscafe-${t.id}`} className="text-base font-semibold text-ink">
-          Syscafe
+          Traslado
         </h4>
         <Pildora tono={info.tono}>{info.texto}</Pildora>
       </div>
@@ -154,7 +154,7 @@ export function SeccionSyscafe({
                   <>
                     <button
                       onClick={abrirEdicion}
-                      aria-label="Editar número Syscafe"
+                      aria-label="Editar número de traslado"
                       title="Editar"
                       className="ml-1 flex h-11 w-11 cursor-pointer items-center justify-center rounded-md text-muted transition-colors duration-150 hover:bg-surface hover:text-ink"
                     >
@@ -163,7 +163,7 @@ export function SeccionSyscafe({
                     <button
                       onClick={() => guardar(null)}
                       disabled={guardando}
-                      aria-label="Borrar número Syscafe"
+                      aria-label="Borrar número de traslado"
                       title="Borrar"
                       className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-md text-danger-fg transition-colors duration-150 hover:bg-surface disabled:opacity-50"
                     >
@@ -181,7 +181,7 @@ export function SeccionSyscafe({
           ) : puedeEditar ? (
             <button
               onClick={abrirEdicion}
-              aria-label="Registrar número Syscafe"
+              aria-label="Registrar número de traslado"
               className={claseBoton("secundario", "self-start")}
             >
               <Icono nombre="mas" className="h-4 w-4" />

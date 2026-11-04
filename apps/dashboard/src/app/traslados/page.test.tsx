@@ -137,7 +137,7 @@ describe("pagina de traslados: listado", () => {
     montar();
     expect(await screen.findByText("No hay traslados para mostrar.")).toBeInTheDocument();
     await userEvent.click(chip("Vista", /^Pendiente N° Traslado/));
-    expect(await screen.findByText("No hay traslados pendientes de Syscafe.")).toBeInTheDocument();
+    expect(await screen.findByText("No hay traslados pendientes de número.")).toBeInTheDocument();
   });
 
   it("si falla la carga ofrece reintentar", async () => {
@@ -280,22 +280,22 @@ describe("pagina de traslados: numero Syscafe", () => {
   it("registra un numero con prefijo que lleva digito (TB9) y recarga la lista", async () => {
     montar();
     await screen.findByRole("table");
-    await userEvent.click(screen.getByRole("button", { name: "Registrar número Syscafe de A 10" }));
-    const caja = screen.getByRole("dialog", { name: /Número Syscafe del traslado A 10/ });
+    await userEvent.click(screen.getByRole("button", { name: "Registrar número de traslado de A 10" }));
+    const caja = screen.getByRole("dialog", { name: /Número de traslado de A 10/ });
     await userEvent.type(within(caja).getByLabelText("Prefijo"), "tb9");
     await userEvent.type(within(caja).getByLabelText("Indicativo"), "120");
     const llamadasAntes = api.listarTrasladosSyscafe.mock.calls.length;
-    await userEvent.click(within(caja).getByRole("button", { name: "Guardar número Syscafe" }));
+    await userEvent.click(within(caja).getByRole("button", { name: "Guardar número de traslado" }));
     await waitFor(() => expect(api.asignarSyscafeDashboard).toHaveBeenCalledWith("t1", "TB9-120"));
     await waitFor(() => expect(api.listarTrasladosSyscafe.mock.calls.length).toBeGreaterThan(llamadasAntes));
-    expect(screen.queryByRole("dialog", { name: /Número Syscafe/ })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: /Número de traslado/ })).toBeNull();
   });
 
   it("la fila con Syscafe ofrece Editar, y la caja no abre el detalle", async () => {
     montar();
     await screen.findByRole("table");
-    await userEvent.click(screen.getByRole("button", { name: "Editar número Syscafe de V 20" }));
-    expect(screen.getByRole("dialog", { name: /Número Syscafe del traslado V 20/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Editar número de traslado de V 20" }));
+    expect(screen.getByRole("dialog", { name: /Número de traslado de V 20/ })).toBeInTheDocument();
     expect(screen.queryByText("detalle t2")).toBeNull();
   });
 
@@ -307,14 +307,14 @@ describe("pagina de traslados: numero Syscafe", () => {
     sesion.puedeEditar = puedeEditar;
     montar();
     await screen.findByRole("table");
-    expect(screen.queryByRole("button", { name: /número Syscafe de/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /número de traslado de/ })).toBeNull();
   });
 
   it("un supervisor de traslados si puede", async () => {
     sesion.usuario = { id: "2", usuario: "u", nombre: "U", rol: "supervisor", area: "traslados" };
     montar();
     await screen.findByRole("table");
-    expect(screen.getByRole("button", { name: "Registrar número Syscafe de A 10" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Registrar número de traslado de A 10" })).toBeInTheDocument();
   });
 });
 

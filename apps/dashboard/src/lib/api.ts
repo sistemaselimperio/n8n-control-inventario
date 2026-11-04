@@ -637,7 +637,7 @@ export async function asignarSyscafeDashboard(trasladoId: string, numeroSyscafe:
     body: JSON.stringify({ numero_syscafe: numeroSyscafe }),
   });
   if (!res.ok) {
-    throw new Error(await mensajeDeError(res, "No se pudo guardar el número Syscafe"));
+    throw new Error(await mensajeDeError(res, "No se pudo guardar el número de traslado"));
   }
 }
 
@@ -677,7 +677,7 @@ export async function subirReporteSyscafeDashboard(trasladoId: string, archivo: 
     body: cuerpo,
   });
   if (!res.ok) {
-    throw new Error(await mensajeDeError(res, "No se pudo subir el reporte Syscafe"));
+    throw new Error(await mensajeDeError(res, "No se pudo subir el reporte de traslado"));
   }
   return res.json();
 }

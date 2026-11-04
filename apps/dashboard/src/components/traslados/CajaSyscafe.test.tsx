@@ -71,7 +71,7 @@ describe("CajaSyscafe: campos", () => {
 
   it("Guardar esta deshabilitado hasta tener prefijo e indicativo", async () => {
     await montar();
-    const guardar = screen.getByRole("button", { name: "Guardar número Syscafe" });
+    const guardar = screen.getByRole("button", { name: "Guardar número de traslado" });
     expect(guardar).toBeDisabled();
     await userEvent.type(prefijo(), "NBR");
     expect(guardar).toBeDisabled();
@@ -91,13 +91,13 @@ describe("CajaSyscafe: campos", () => {
 
   it("con un numero existente sin cambios no se puede guardar, pero si borrar", async () => {
     await montar(fila({ numero_syscafe: "NBR-945" }));
-    expect(screen.getByRole("button", { name: "Guardar número Syscafe" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Borrar número Syscafe" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Guardar número de traslado" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Borrar número de traslado" })).toBeEnabled();
   });
 
   it("sin numero guardado no hay boton de borrar", async () => {
     await montar();
-    expect(screen.queryByRole("button", { name: "Borrar número Syscafe" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Borrar número de traslado" })).toBeNull();
   });
 });
 
@@ -106,10 +106,10 @@ describe("CajaSyscafe: guardar y borrar", () => {
     const { onCerrar, onGuardado } = await montar();
     await userEvent.type(prefijo(), "tb9");
     await userEvent.type(indicativo(), "120");
-    await userEvent.click(screen.getByRole("button", { name: "Guardar número Syscafe" }));
+    await userEvent.click(screen.getByRole("button", { name: "Guardar número de traslado" }));
     await waitFor(() => expect(onGuardado).toHaveBeenCalledOnce());
     expect(api.asignarSyscafeDashboard).toHaveBeenCalledWith("t1", "TB9-120");
-    expect(toast.success).toHaveBeenCalledWith("Syscafe TB9-120 guardado en TP-000012");
+    expect(toast.success).toHaveBeenCalledWith("Número de traslado TB9-120 guardado en TP-000012");
     expect(onCerrar).toHaveBeenCalled();
   });
 
@@ -128,10 +128,10 @@ describe("CajaSyscafe: guardar y borrar", () => {
 
   it("borrar envia null", async () => {
     const { onGuardado } = await montar(fila({ numero_syscafe: "NBR-945" }));
-    await userEvent.click(screen.getByRole("button", { name: "Borrar número Syscafe" }));
+    await userEvent.click(screen.getByRole("button", { name: "Borrar número de traslado" }));
     await waitFor(() => expect(onGuardado).toHaveBeenCalled());
     expect(api.asignarSyscafeDashboard).toHaveBeenCalledWith("t1", null);
-    expect(toast.success).toHaveBeenCalledWith("Número Syscafe borrado");
+    expect(toast.success).toHaveBeenCalledWith("Número de traslado borrado");
   });
 
   it("un error (409 de otra hoja) se muestra, no cierra y deja reintentar", async () => {
@@ -139,18 +139,18 @@ describe("CajaSyscafe: guardar y borrar", () => {
     const { onCerrar, onGuardado } = await montar();
     await userEvent.type(prefijo(), "NBR");
     await userEvent.type(indicativo(), "945");
-    await userEvent.click(screen.getByRole("button", { name: "Guardar número Syscafe" }));
+    await userEvent.click(screen.getByRole("button", { name: "Guardar número de traslado" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Ya lo tiene la hoja A 12"));
     expect(onCerrar).not.toHaveBeenCalled();
     expect(onGuardado).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Guardar número Syscafe" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Guardar número de traslado" })).toBeEnabled();
   });
 
   it("recuerda el ultimo prefijo guardado para la siguiente caja", async () => {
     const { CajaSyscafe, unmount } = await montar();
     await userEvent.type(prefijo(), "TB9");
     await userEvent.type(indicativo(), "1");
-    await userEvent.click(screen.getByRole("button", { name: "Guardar número Syscafe" }));
+    await userEvent.click(screen.getByRole("button", { name: "Guardar número de traslado" }));
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
     unmount();
     render(<CajaSyscafe fila={fila({ id: "t2" })} ancla={ancla} onCerrar={vi.fn()} onGuardado={vi.fn()} />);

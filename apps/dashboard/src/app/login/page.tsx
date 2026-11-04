@@ -132,7 +132,7 @@ function TalonarioTraslado() {
                 <dd className="truncate">Punto Centro</dd>
               </div>
               <div className="flex justify-between gap-2 font-semibold">
-                <dt>Syscafe</dt>
+                <dt>Traslado</dt>
                 <dd className="tabular-nums text-ok-fg">4587</dd>
               </div>
             </dl>

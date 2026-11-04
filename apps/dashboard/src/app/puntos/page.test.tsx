@@ -56,7 +56,7 @@ describe("lista de puntos", () => {
     expect(within(centro).getByText("CEN")).toBeInTheDocument();
     // Centro envio 2 traslados este mes (1 sin Syscafe); Norte los recibe (2 en transito).
     expect(within(centro).getByText("Del mes").parentElement).toHaveTextContent("2");
-    expect(within(centro).getByText("Sin Syscafe").parentElement).toHaveTextContent("1");
+    expect(within(centro).getByText("Sin número de traslado").parentElement).toHaveTextContent("1");
     expect(within(norte).getByText("Por recibir").parentElement).toHaveTextContent("2");
   });
 

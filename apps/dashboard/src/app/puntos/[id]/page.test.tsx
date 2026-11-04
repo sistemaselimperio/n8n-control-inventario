@@ -112,7 +112,7 @@ describe("detalle de un punto", () => {
     await waitFor(() => expect(within(indicador("Traslados del mes")).getByText("3")).toBeInTheDocument());
     expect(within(indicador("Pendientes de recibir")).getByText("1")).toBeInTheDocument();
     expect(within(indicador("Con novedad")).getByText("1")).toBeInTheDocument();
-    expect(within(indicador("Sin número Syscafe")).getByText("1")).toBeInTheDocument();
+    expect(within(indicador("Sin número de traslado")).getByText("1")).toBeInTheDocument();
   });
 
   it("lista los traslados enviados y recibidos con estado y numero Syscafe", async () => {

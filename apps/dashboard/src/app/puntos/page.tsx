@@ -110,7 +110,7 @@ export default function PuntosPage() {
                   <span className="grid grid-cols-3 gap-3">
                     <Cifra etiqueta="Del mes" valor={r?.delMes ?? null} />
                     <Cifra etiqueta="Por recibir" valor={r?.pendientesRecibir ?? null} />
-                    <Cifra etiqueta="Sin Syscafe" valor={r?.sinSyscafe ?? null} />
+                    <Cifra etiqueta="Sin número de traslado" valor={r?.sinSyscafe ?? null} />
                   </span>
                 </Link>
               </li>

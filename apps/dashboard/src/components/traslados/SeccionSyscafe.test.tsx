@@ -28,9 +28,9 @@ beforeEach(() => {
 });
 
 describe("SeccionSyscafe", () => {
-  it("es una seccion propia con titulo Syscafe y su estado", () => {
+  it("es una seccion propia con titulo Traslado y su estado", () => {
     render(<SeccionSyscafe traslado={base} puedeEditar onCambio={vi.fn()} />);
-    const seccion = screen.getByRole("region", { name: "Syscafe" });
+    const seccion = screen.getByRole("region", { name: "Traslado" });
     expect(within(seccion).getByText("Falta número y reporte")).toBeInTheDocument();
   });
 
@@ -58,7 +58,7 @@ describe("SeccionSyscafe", () => {
   it("registrar el numero con prefijo e indicativo guarda PREFIJO-NUMERO", async () => {
     const onCambio = vi.fn();
     render(<SeccionSyscafe traslado={base} puedeEditar onCambio={onCambio} />);
-    await userEvent.click(screen.getByRole("button", { name: "Registrar número Syscafe" }));
+    await userEvent.click(screen.getByRole("button", { name: "Registrar número de traslado" }));
     await userEvent.type(screen.getByLabelText("Prefijo"), "cuk");
     await userEvent.type(screen.getByLabelText("Indicativo"), "172{Enter}");
     await waitFor(() => expect(api.asignarSyscafeDashboard).toHaveBeenCalledWith("t1", "CUK-172"));
@@ -69,17 +69,17 @@ describe("SeccionSyscafe", () => {
     render(
       <SeccionSyscafe traslado={{ ...base, numero_syscafe: "CUK-172" }} puedeEditar onCambio={vi.fn()} />,
     );
-    await userEvent.click(screen.getByRole("button", { name: "Editar número Syscafe" }));
+    await userEvent.click(screen.getByRole("button", { name: "Editar número de traslado" }));
     expect(screen.getByLabelText("Prefijo")).toHaveValue("CUK");
     expect(screen.getByLabelText("Indicativo")).toHaveValue("172");
     await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
-    await userEvent.click(screen.getByRole("button", { name: "Borrar número Syscafe" }));
+    await userEvent.click(screen.getByRole("button", { name: "Borrar número de traslado" }));
     await waitFor(() => expect(api.asignarSyscafeDashboard).toHaveBeenCalledWith("t1", null));
   });
 
   it("sin permiso no muestra controles de edicion ni de subida", () => {
     render(<SeccionSyscafe traslado={base} puedeEditar={false} onCambio={vi.fn()} />);
-    expect(screen.queryByRole("button", { name: /número Syscafe/ })).toBeNull();
-    expect(screen.queryByLabelText("Archivo del reporte Syscafe")).toBeNull();
+    expect(screen.queryByRole("button", { name: /número de traslado/ })).toBeNull();
+    expect(screen.queryByLabelText("Archivo del reporte de traslado")).toBeNull();
   });
 });

@@ -189,7 +189,7 @@ export default function PuntoPage() {
               cargando={cargandoTraslados}
             />
             <Indicador
-              etiqueta="Sin número Syscafe"
+              etiqueta="Sin número de traslado"
               valor={String(kpis.sinSyscafe)}
               detalle="Hojas del punto por registrar"
               cargando={cargandoTraslados}

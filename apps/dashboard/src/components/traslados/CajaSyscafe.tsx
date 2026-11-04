@@ -72,11 +72,11 @@ export function CajaSyscafe({
     try {
       await asignarSyscafeDashboard(fila.id, nuevo);
       if (nuevo) ultimoPrefijo = prefijo;
-      toast.success(nuevo ? `Syscafe ${nuevo} guardado en ${referencia(fila)}` : "Número Syscafe borrado");
+      toast.success(nuevo ? `Número de traslado ${nuevo} guardado en ${referencia(fila)}` : "Número de traslado borrado");
       onGuardado();
       onCerrar();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo guardar el número Syscafe");
+      toast.error(err instanceof Error ? err.message : "No se pudo guardar el número de traslado");
       setGuardando(false);
     }
   };
@@ -98,7 +98,7 @@ export function CajaSyscafe({
     <div
       ref={caja}
       role="dialog"
-      aria-label={`Número Syscafe del traslado ${referencia(fila)}`}
+      aria-label={`Número de traslado de ${referencia(fila)}`}
       style={{ left, top }}
       className="fixed z-50 flex rounded-md border border-brand-gold/50 bg-surface p-1.5 shadow-lg shadow-brand-night/30"
     >
@@ -142,7 +142,7 @@ export function CajaSyscafe({
           onClick={() => guardar(numero)}
           disabled={!valido || guardando}
           title="Guardar"
-          aria-label="Guardar número Syscafe"
+          aria-label="Guardar número de traslado"
           className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded bg-brand-gold text-brand-ink transition-colors duration-150 hover:bg-gold-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Icono nombre="check" className="h-3.5 w-3.5" />
@@ -153,7 +153,7 @@ export function CajaSyscafe({
             onClick={() => guardar(null)}
             disabled={guardando}
             title="Borrar número"
-            aria-label="Borrar número Syscafe"
+            aria-label="Borrar número de traslado"
             className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded text-danger transition-colors duration-150 hover:bg-surface-2 disabled:opacity-50"
           >
             <Icono nombre="basura" className="h-3.5 w-3.5" />

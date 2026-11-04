@@ -23,7 +23,7 @@ const archivo = (nombre: string, tipo: string, tamano = 10) => {
   return f;
 };
 
-const entrada = () => screen.getByLabelText("Archivo del reporte Syscafe");
+const entrada = () => screen.getByLabelText("Archivo del reporte de traslado");
 
 beforeEach(() => {
   api.subirReporteSyscafeDashboard.mockReset().mockResolvedValue({});
@@ -49,7 +49,7 @@ describe("validarArchivoReporte", () => {
 describe("ReporteSyscafe: subir", () => {
   it("no muestra el control a quien no puede subir", () => {
     render(<ReporteSyscafe traslado={sinReporte} puedeSubir={false} onSubido={vi.fn()} />);
-    expect(screen.queryByLabelText("Archivo del reporte Syscafe")).toBeNull();
+    expect(screen.queryByLabelText("Archivo del reporte de traslado")).toBeNull();
     expect(screen.getByText(/Sin reporte/i)).toBeInTheDocument();
   });
 
@@ -89,7 +89,7 @@ describe("ReporteSyscafe: subir", () => {
 
   it("arrastrar una imagen a la zona muestra la vista previa", () => {
     render(<ReporteSyscafe traslado={sinReporte} puedeSubir onSubido={vi.fn()} />);
-    const zona = screen.getByRole("button", { name: /subir reporte syscafe/i });
+    const zona = screen.getByRole("button", { name: /subir reporte de traslado/i });
     fireEvent.drop(zona, { dataTransfer: { files: [archivo("r.png", "image/png")] } });
     expect(screen.getByAltText("Vista previa del reporte")).toBeInTheDocument();
   });
@@ -133,11 +133,11 @@ describe("ReporteSyscafe: ya subido", () => {
 
   it("imagen: miniatura que enlaza al archivo y sin control de subida", () => {
     render(<ReporteSyscafe traslado={conImagen} puedeSubir onSubido={vi.fn()} />);
-    const enlace = screen.getByRole("link", { name: /reporte syscafe/i });
+    const enlace = screen.getByRole("link", { name: /reporte de traslado/i });
     expect(enlace).toHaveAttribute("href", "https://x/reporte.webp");
     expect(enlace).toHaveAttribute("target", "_blank");
-    expect(screen.getByAltText("Reporte Syscafe")).toHaveAttribute("src", "https://x/reporte.webp");
-    expect(screen.queryByLabelText("Archivo del reporte Syscafe")).toBeNull();
+    expect(screen.getByAltText("Reporte de traslado")).toHaveAttribute("src", "https://x/reporte.webp");
+    expect(screen.queryByLabelText("Archivo del reporte de traslado")).toBeNull();
     expect(screen.getByText(/Ana Prueba/)).toBeInTheDocument();
   });
 

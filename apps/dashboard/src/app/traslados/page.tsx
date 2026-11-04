@@ -244,7 +244,7 @@ export default function TrasladosPage() {
     <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8">
       <EncabezadoPagina
         titulo="Traslados"
-        descripcion="Revisa cada traslado y registra su número en Syscafe (por ejemplo NBR-945). Haz clic en una fila para ver el detalle."
+        descripcion="Revisa cada traslado y registra su número de traslado (por ejemplo NBR-945). Haz clic en una fila para ver el detalle."
       />
 
       {/* Traslados: titulo con total, vistas como pestañas subrayadas con
@@ -280,7 +280,7 @@ export default function TrasladosPage() {
             etiqueta="Buscar traslado"
             valor={busqueda}
             onCambio={setBusqueda}
-            placeholder="Buscar Syscafe, talonario, punto, persona o consecutivo"
+            placeholder="Buscar número de traslado, talonario, punto, persona o consecutivo"
             claseCampo={claseCampo}
           />
 
@@ -364,7 +364,7 @@ export default function TrasladosPage() {
           </div>
         ) : visibles.length === 0 ? (
           <EstadoVacio
-            titulo={soloPendientes ? "No hay traslados pendientes de Syscafe." : "No hay traslados para mostrar."}
+            titulo={soloPendientes ? "No hay traslados pendientes de número." : "No hay traslados para mostrar."}
           />
         ) : (
           <div className="overflow-x-auto">
@@ -375,7 +375,7 @@ export default function TrasladosPage() {
                     Talonario
                   </th>
                   <th scope="col" className="px-3 py-3 font-medium">
-                    Syscafe
+                    Traslado
                   </th>
                   <th scope="col" className="px-3 py-3 font-medium">
                     Origen y destino
@@ -437,8 +437,8 @@ export default function TrasladosPage() {
                                   const celda = e.currentTarget.closest("td") ?? e.currentTarget;
                                   setSyscafe({ fila, ancla: celda.getBoundingClientRect() });
                                 }}
-                                title={fila.numero_syscafe ? "Editar número Syscafe" : "Registrar número Syscafe"}
-                                aria-label={`${fila.numero_syscafe ? "Editar" : "Registrar"} número Syscafe de ${referencia(fila)}`}
+                                title={fila.numero_syscafe ? "Editar número de traslado" : "Registrar número de traslado"}
+                                aria-label={`${fila.numero_syscafe ? "Editar" : "Registrar"} número de traslado de ${referencia(fila)}`}
                                 className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-md transition-colors duration-150 ${
                                   fila.numero_syscafe
                                     ? "text-muted hover:bg-surface-2 hover:text-ink"

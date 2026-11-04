@@ -40,7 +40,7 @@ export function TablaTrasladosPunto({
               Talonario
             </th>
             <th scope="col" className="px-3 py-3 font-medium">
-              Syscafe
+              Traslado
             </th>
             <th scope="col" className="px-3 py-3 font-medium">
               Origen y destino
