@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
   fetchTrasladoDetalle: vi.fn(),
-  fetchHistorialTraslado: vi.fn(),
   fetchPuntosPublicos: vi.fn(),
   resolverNovedadDashboard: vi.fn(),
   asignarSyscafeDashboard: vi.fn(),
@@ -39,7 +38,8 @@ const detalle = (extra: Record<string, unknown> = {}) => ({
   created_at: "2026-10-13T10:00:00Z",
   recibido_por_nombre: "Luis",
   recibido_at: "2026-10-13T12:00:00Z",
-  declaracion_aceptada_at: null,
+  declaracion_aceptada_at: "2026-10-13T12:00:00Z",
+  firma_recibe_url: "https://x/firma.png",
   items: [],
   ...extra,
 });
@@ -53,7 +53,6 @@ const montar = (puedeAsignar: boolean) =>
 
 beforeEach(() => {
   Object.values(api).forEach((f) => f.mockReset());
-  api.fetchHistorialTraslado.mockResolvedValue([]);
   api.fetchPuntosPublicos.mockResolvedValue([{ id: "p2", nombre: "Bodega", codigo: "BDG" }]);
 });
 
@@ -83,5 +82,19 @@ describe("ModalDetalleTraslado: resolver novedad", () => {
     montar(true);
     expect(await screen.findByText("Se repuso")).toBeInTheDocument();
     expect(screen.queryByRole("form", { name: "Resolver novedad" })).toBeNull();
+  });
+});
+
+describe("ModalDetalleTraslado: sin constancia ni historial", () => {
+  it("no muestra la constancia de recepcion ni el historial, aunque este recibido", async () => {
+    api.fetchTrasladoDetalle.mockResolvedValue(detalle());
+    montar(true);
+    expect(await screen.findByText("Faltan 3 sacos")).toBeInTheDocument();
+    expect(screen.queryByText("Constancia de recepción")).toBeNull();
+    expect(screen.queryByText(/Aceptó revisión producto por producto/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Historial" })).toBeNull();
+    expect(screen.queryByText("Traslado enviado")).toBeNull();
+    expect(screen.queryByText("Traslado recibido")).toBeNull();
+    expect(screen.queryByAltText("Firma de quien recibe")).toBeNull();
   });
 });

@@ -535,20 +535,6 @@ export interface TrasladoDetalle {
 
 export const fetchTrasladoDetalle = (id: string) => getJson<TrasladoDetalle>(`/traslados-puntos/${id}`);
 
-// Evento del punto sobre un traslado (GET /traslados-puntos/{id}/historial):
-// envio, recepcion y novedad, del mas antiguo al mas reciente.
-export interface EventoHistorialTraslado {
-  evento: string;
-  momento: string;
-  resultado: string;
-  detalle: Record<string, unknown>;
-  actor_nombre: string | null;
-  punto_nombre: string | null;
-}
-
-export const fetchHistorialTraslado = (id: string) =>
-  getJson<EventoHistorialTraslado[]>(`/traslados-puntos/${id}/historial`);
-
 // Feed de actividad reciente del panel de traslados, en lenguaje simple.
 export interface ActividadTraslado {
   tipo: "envio" | "recepcion" | "solucion" | "syscafe" | "anulada";

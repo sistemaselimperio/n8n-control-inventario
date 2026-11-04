@@ -2,13 +2,11 @@
 
 // Detalle de un traslado: datos, apartado Syscafe (numero y reporte, editables
 // para quien puede asignarlos), productos con lo enviado vs. lo recibido (con su estado por
-// producto), constancia de recepcion, historial, novedad y fotos.
+// producto), novedad y fotos.
 
 import useSWR from "swr";
 import {
-  fetchHistorialTraslado,
   fetchTrasladoDetalle,
-  type EventoHistorialTraslado,
   type ItemTrasladoDetalle,
   type TrasladoDetalle,
 } from "@/lib/api";
@@ -33,8 +31,6 @@ export function ModalDetalleTraslado({
   const { data: t, error, mutate } = useSWR(["traslado-detalle", id], () => fetchTrasladoDetalle(id), {
     refreshInterval: 5000,
   });
-  // El historial se carga al abrir el modal (no se refresca solo: son eventos ya registrados).
-  const { data: historial } = useSWR(["traslado-historial", id], () => fetchHistorialTraslado(id));
   // Llega directo: no hay quien despache ni transporte, solo firma quien recibe.
   const directo = t?.tipo === "directo";
   const info = t ? (ESTADOS[t.estado] ?? { texto: t.estado, tono: "neutro" as TonoPildora }) : null;
@@ -139,7 +135,6 @@ export function ModalDetalleTraslado({
             </Dato>
           ) : null}
           {t.observaciones ? <Dato etiqueta="Observaciones">{t.observaciones}</Dato> : null}
-          <ConstanciaRecepcion t={t} />
           <NovedadYSolucion
             t={t}
             puedeResolver={puedeAsignar}
@@ -148,7 +143,6 @@ export function ModalDetalleTraslado({
               onCambio();
             }}
           />
-          <Historial eventos={historial} />
           <Imagenes t={t} />
         </>
       )}
@@ -193,77 +187,6 @@ function ResumenRecepcion({ items }: { items: ItemTrasladoDetalle[] }) {
   const partes = [`${bien} bien`, `${conDiferencia} con diferencia`];
   if (sinRecibir > 0) partes.push(`${sinRecibir} sin recibir`);
   return <span className="text-xs text-muted">{partes.join(" · ")}</span>;
-}
-
-// Respaldo de la recepcion: quien recibio, cuando, la firma y si acepto la
-// declaracion de revision producto por producto (solo recepciones nuevas).
-function ConstanciaRecepcion({ t }: { t: TrasladoDetalle }) {
-  if (!t.recibido_at) return null;
-  return (
-    <div className="flex flex-col gap-2 rounded-md border border-line bg-surface-2 p-3">
-      <h4 className="text-sm font-semibold text-ink">Constancia de recepción</h4>
-      <div className="flex flex-wrap items-start gap-4">
-        <div className="flex flex-1 flex-col gap-1 text-sm text-ink">
-          <p>
-            Recibió <span className="font-medium">{t.recibido_por_nombre ?? "—"}</span>
-            {t.punto_destino_nombre ? ` en ${t.punto_destino_nombre}` : ""}, {fechaHora(t.recibido_at)}.
-          </p>
-          {t.declaracion_aceptada_at ? (
-            <p className="text-xs text-muted">
-              Aceptó revisión producto por producto el {fechaHora(t.declaracion_aceptada_at)}.
-            </p>
-          ) : (
-            <p className="text-xs text-muted">Recepción anterior a la revisión obligatoria.</p>
-          )}
-        </div>
-        {t.firma_recibe_url ? (
-          <a
-            href={t.firma_recibe_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex flex-col gap-1 text-xs text-muted hover:text-ink"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element -- URL publica de Storage, igual que en Imagenes */}
-            <img
-              src={t.firma_recibe_url}
-              alt="Firma de quien recibe"
-              loading="lazy"
-              className="h-16 w-32 rounded-md border border-line-strong bg-white object-contain p-1"
-            />
-            Firma recibe
-          </a>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-const ETIQUETA_EVENTO: Record<string, string> = {
-  traslado_punto_creado: "Traslado enviado",
-  traslado_punto_recibido: "Traslado recibido",
-  traslado_punto_novedad: "Novedad registrada",
-  llegada_directa_registrada: "Llegada directa registrada",
-};
-
-// Linea de tiempo de lo que hizo el punto (no incluye acciones del dashboard).
-function Historial({ eventos }: { eventos: EventoHistorialTraslado[] | undefined }) {
-  if (!eventos || eventos.length === 0) return null;
-  return (
-    <div className="flex flex-col gap-2">
-      <h4 className="text-sm font-semibold text-ink">Historial</h4>
-      <ol className="flex flex-col gap-2 border-l border-line pl-4">
-        {eventos.map((e, i) => (
-          <li key={`${e.evento}-${i}`} className="flex flex-col">
-            <span className="text-sm text-ink">{ETIQUETA_EVENTO[e.evento] ?? e.evento}</span>
-            <span className="text-xs text-muted">
-              {e.actor_nombre ?? "—"}
-              {e.punto_nombre ? ` · ${e.punto_nombre}` : ""} · {fechaHora(e.momento)}
-            </span>
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
 }
 
 function NovedadYSolucion({

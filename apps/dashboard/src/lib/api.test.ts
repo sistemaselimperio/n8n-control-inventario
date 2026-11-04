@@ -113,7 +113,6 @@ describe("lecturas (getJson)", () => {
     ["fetchProductos sin busqueda", () => api.fetchProductos(), "/productos"],
     ["fetchProductos con busqueda", () => api.fetchProductos("arroz 1kg"), "/productos?buscar=arroz%201kg"],
     ["fetchTrasladoDetalle", () => api.fetchTrasladoDetalle("t1"), "/traslados-puntos/t1"],
-    ["fetchHistorialTraslado", () => api.fetchHistorialTraslado("t1"), "/traslados-puntos/t1/historial"],
     ["fetchActividadTraslados", () => api.fetchActividadTraslados(), "/traslados-puntos/actividad?limite=50"],
     ["fetchActividadTraslados con limite", () => api.fetchActividadTraslados(10), "/traslados-puntos/actividad?limite=10"],
     ["fetchResumenTalonarios", () => api.fetchResumenTalonarios(), "/talonarios-puntos/resumen"],
