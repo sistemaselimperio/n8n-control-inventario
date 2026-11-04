@@ -140,15 +140,11 @@ describe("barra de usuario", () => {
     expect(screen.queryByRole("link", { name: "Ranking" })).toBeNull();
   });
 
-  it("en movil el boton de menu abre y cierra la lista de enlaces", async () => {
+  it("las pestañas quedan siempre a la vista, sin boton de menu plegable", () => {
     iniciarSesionDePrueba();
     montar();
-    const boton = screen.getByRole("button", { name: "Menú de navegación" });
-    expect(boton).toHaveAttribute("aria-expanded", "false");
-    await userEvent.click(boton);
-    expect(boton).toHaveAttribute("aria-expanded", "true");
-    await userEvent.click(boton);
-    expect(boton).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Menú de navegación" })).toBeNull();
+    expect(within(screen.getByRole("navigation", { name: "Principal" })).getAllByRole("listitem")).toHaveLength(7);
   });
 
   it("muestra nombre, usuario y rol en el menu de usuario", async () => {

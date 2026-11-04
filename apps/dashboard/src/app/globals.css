@@ -1,11 +1,11 @@
 @import "tailwindcss";
 
 /* Panel operativo en tema claro "cielo y campo", con los colores del logo de
-   Comercializadora El Imperio: barra superior azul cielo (#123A82) con una franja
-   verde pasto (#3D8E33) debajo, fondo claro calido (#F5F5F0), tarjetas blancas y
-   texto verde casi negro. El verde de marca es el acento de accion (botones,
-   seleccion, "entregado"); el dorado del logo (#F5C542) marca la seccion activa
-   sobre el azul y el ambar #E0A526 lo pendiente. Sin fondos azules en el
+   Comercializadora El Imperio: barra superior en azul noche (#081633) con la
+   seccion activa subrayada en verde pasto (#3D8E33) y el usuario como avatar
+   dorado (#F5C542), fondo claro calido (#F5F5F0), tarjetas blancas
+   y texto verde casi negro. El verde de marca es el acento de accion (botones,
+   seleccion, "entregado") y el ambar #E0A526 lo pendiente. Sin fondos azules en el
    contenido. No sigue prefers-color-scheme: es una herramienta interna de sede.
    Contrastes WCAG medidos (todo el texto >= 4.5:1 sobre page, surface y surface-2):
      ink 13.6 / 14.9 / 12.9 · muted 6.1 / 6.7 / 5.8 · subtle 5.7 / 6.2 / 5.4 ·
@@ -99,11 +99,6 @@ body {
 :focus-visible {
   outline: 2px solid var(--color-ok);
   outline-offset: 2px;
-}
-
-/* Sobre la barra azul el verde casi no se ve (1.9:1): ahi el foco va en dorado. */
-header.bg-cielo :focus-visible {
-  outline-color: var(--color-oro);
 }
 
 /* Todo lo clicable se siente clicable (Tailwind v4 deja cursor: default). */

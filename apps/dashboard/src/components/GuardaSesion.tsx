@@ -5,7 +5,7 @@
 // se renderiza nada protegido hasta saber que hay sesion, para no mostrar un
 // destello del panel a quien no inicio sesion.
 
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -68,20 +68,87 @@ export function GuardaSesion({ children }: { children: ReactNode }) {
 
 // Enlaces del menu principal. `soloAdmin` replica la misma regla que ya usaba
 // la portada (Planificacion de turnos y Administracion solo para admin).
-type EnlaceNav = { href: string; etiqueta: string; soloAdmin?: boolean };
+// `grupo` separa la operacion diaria del analisis y de la configuracion: la
+// barra los muestra como bloques, con la configuracion al extremo derecho.
+type GrupoNav = "operacion" | "analisis" | "configuracion";
+type EnlaceNav = { href: string; etiqueta: string; grupo: GrupoNav; icono: ReactNode; soloAdmin?: boolean };
+
+// Iconos de contorno (24x24, trazo 1.75) dibujados aqui para no sumar una
+// dependencia; son decorativos: la etiqueta de texto siempre acompaña.
+const ICONOS = {
+  entregas: (
+    <path d="m7.5 4.27 9 5.15M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16ZM3.3 7 12 12l8.7-5M12 22V12" />
+  ),
+  traslados: (
+    <>
+      <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2M15 18H9M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14" />
+      <circle cx="7" cy="18" r="2" />
+      <circle cx="17" cy="18" r="2" />
+    </>
+  ),
+  puntos: (
+    <>
+      <path d="M20 10c0 5-5.54 10.19-7.4 11.8a1 1 0 0 1-1.2 0C9.54 20.19 4 15 4 10a8 8 0 0 1 16 0" />
+      <circle cx="12" cy="10" r="3" />
+    </>
+  ),
+  ranking: <path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3" />,
+  turnos: (
+    <>
+      <path d="M8 2v4M16 2v4M3 10h18" />
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+    </>
+  ),
+  catalogo: (
+    <path d="M12 7v14M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3Z" />
+  ),
+  administracion: (
+    <>
+      <path d="M20 7h-9M14 17H5" />
+      <circle cx="17" cy="17" r="3" />
+      <circle cx="7" cy="7" r="3" />
+    </>
+  ),
+};
 
 // Todas las secciones son pestañas visibles de la barra superior (sin menus
 // desplegables). "Entregas" es la pagina principal (el antiguo "Hoy" se
 // fusiono con ella).
 const ENLACES_NAV: EnlaceNav[] = [
-  { href: "/entregas", etiqueta: "Entregas" },
-  { href: "/traslados", etiqueta: "Traslados" },
-  { href: "/puntos", etiqueta: "Puntos" },
-  { href: "/ranking", etiqueta: "Ranking" },
-  { href: "/turnos", etiqueta: "Turnos", soloAdmin: true },
-  { href: "/productos", etiqueta: "Catálogo" },
-  { href: "/creador", etiqueta: "Administración", soloAdmin: true },
+  { href: "/entregas", etiqueta: "Entregas", grupo: "operacion", icono: ICONOS.entregas },
+  { href: "/traslados", etiqueta: "Traslados", grupo: "operacion", icono: ICONOS.traslados },
+  { href: "/puntos", etiqueta: "Puntos", grupo: "operacion", icono: ICONOS.puntos },
+  { href: "/ranking", etiqueta: "Ranking", grupo: "analisis", icono: ICONOS.ranking },
+  { href: "/turnos", etiqueta: "Turnos", grupo: "analisis", icono: ICONOS.turnos, soloAdmin: true },
+  { href: "/productos", etiqueta: "Catálogo", grupo: "configuracion", icono: ICONOS.catalogo },
+  { href: "/creador", etiqueta: "Administración", grupo: "configuracion", icono: ICONOS.administracion, soloAdmin: true },
 ];
+
+function IconoNav({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      className="h-4 w-4 shrink-0"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {children}
+    </svg>
+  );
+}
+
+// Primer enlace de cada grupo (salvo el primero de todos): lleva el separador
+// vertical delante; el de configuracion ademas se va al extremo derecho.
+const claseInicioGrupo = (e: EnlaceNav, i: number) => {
+  if (i === 0 || ENLACES_NAV[i - 1].grupo === e.grupo) return "";
+  const separador =
+    "relative ml-1 pl-1 before:absolute before:left-0 before:top-1/2 before:h-5 before:w-px before:-translate-y-1/2 before:bg-white/15";
+  return e.grupo === "configuracion" ? `${separador} md:ml-auto` : separador;
+};
 
 const esActiva = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
@@ -106,28 +173,41 @@ function Candado() {
   );
 }
 
-// Clases comunes de las pestañas: 44px de alto y marca de activo de 2px en el
-// verde de marca bajo el texto (sin pildora). El anillo de foco va hacia
-// adentro (offset negativo) para que ningun contenedor lo recorte.
+// Pestañas subrayadas sobre el azul noche: la activa se ilumina a blanco y
+// lleva una barra de 3px en el verde de marca pegada al borde inferior; las
+// demas quedan en el gris azulado de la barra. El anillo de foco va hacia
+// adentro (offset negativo) para que el scroll horizontal no lo recorte.
 const CLASE_ITEM_NAV =
-  "relative flex min-h-11 items-center rounded-md px-3 text-sm transition-colors duration-150 focus-visible:outline-offset-[-2px] after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full";
+  "relative flex min-h-11 items-center gap-1.5 whitespace-nowrap px-3 text-sm transition-colors duration-150 focus-visible:outline-offset-[-2px] after:absolute after:inset-x-3 after:bottom-0 after:h-[3px] after:rounded-t-sm";
 
 const claseItemNav = (activo: boolean) =>
   `${CLASE_ITEM_NAV} ${
     activo
-      ? "font-semibold text-white after:bg-oro"
-      : "font-medium text-cielo-ink after:bg-transparent hover:bg-cielo-hover hover:text-white"
+      ? "font-semibold text-white after:bg-campo"
+      : "font-medium text-cielo-ink after:bg-transparent hover:text-white hover:after:bg-white/25"
   }`;
+
+
+// Iniciales del avatar: primera letra de las dos primeras palabras del nombre.
+const iniciales = (nombre: string) =>
+  nombre
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("") || "?";
 
 function BarraUsuario() {
   const { usuario, logout, esAdmin } = useSesion();
   const pathname = usePathname();
   const [menuAbierto, setMenuAbierto] = useState(false);
-  // Movil: la lista de enlaces se pliega tras un boton. Se guarda la ruta en la
-  // que se abrio, asi se cierra sola al navegar (sin efecto).
-  const [navAbiertaEn, setNavAbiertaEn] = useState<string | null>(null);
-  const navAbierta = navAbiertaEn === pathname;
   const [cambiando, setCambiando] = useState(false);
+  // En pantallas angostas la fila de pestañas hace scroll: al cambiar de ruta
+  // se trae la pestaña activa a la vista para que no quede escondida.
+  const activaRef = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    activaRef.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [pathname]);
   // El logo se anima solo la primera vez que se muestra en la sesion del
   // navegador (no en cada cambio de ruta). Si sessionStorage falla, queda estatico.
   const [animarLogo] = useState(() => {
@@ -149,71 +229,84 @@ function BarraUsuario() {
   // Todas las secciones se muestran: las que el usuario no puede abrir quedan
   // bloqueadas (con candado y sin enlace) en lugar de desaparecer del menu.
   const permitido = (e: EnlaceNav) => (!e.soloAdmin || esAdmin) && rutaPermitida(usuario, e.href);
-  const enlaceSimple = (e: EnlaceNav) =>
-    !permitido(e) ? (
-      <li key={e.href} className="flex">
-        <span
-          aria-disabled="true"
-          title={AVISO_BLOQUEADO}
-          className={`${CLASE_ITEM_NAV} cursor-not-allowed gap-1.5 font-medium text-cielo-ink/70 after:bg-transparent`}
-        >
-          {e.etiqueta}
-          <Candado />
-          <span className="sr-only">, sin acceso</span>
-        </span>
-      </li>
-    ) : (
-      <li key={e.href} className="flex">
+  const enlaceSimple = (e: EnlaceNav, i: number) => {
+    const claseLi = `flex shrink-0 ${claseInicioGrupo(e, i)}`;
+    if (!permitido(e)) {
+      return (
+        <li key={e.href} className={claseLi}>
+          <span
+            aria-disabled="true"
+            title={AVISO_BLOQUEADO}
+            className={`${CLASE_ITEM_NAV} cursor-not-allowed font-medium text-cielo-ink/50`}
+          >
+            <IconoNav>{e.icono}</IconoNav>
+            {e.etiqueta}
+            <Candado />
+            <span className="sr-only">, sin acceso</span>
+          </span>
+        </li>
+      );
+    }
+    const activa = esActiva(pathname, e.href);
+    return (
+      <li key={e.href} className={claseLi}>
         <Link
+          ref={activa ? activaRef : undefined}
           href={e.href}
-          aria-current={esActiva(pathname, e.href) ? "page" : undefined}
-          className={`${claseItemNav(esActiva(pathname, e.href))} w-full md:w-auto`}
+          aria-current={activa ? "page" : undefined}
+          className={claseItemNav(activa)}
         >
+          <IconoNav>{e.icono}</IconoNav>
           {e.etiqueta}
         </Link>
       </li>
     );
+  };
 
   return (
-    <header className="sticky top-0 z-30 border-b-4 border-campo bg-cielo">
-      <div className="mx-auto flex min-h-14 w-full max-w-7xl flex-wrap items-center gap-x-3 px-4 sm:px-6">
+    <header className="sticky top-0 z-30 bg-brand-night">
+      {/* Una sola barra: logo, pestañas y usuario. En el celular las pestañas
+          bajan a una segunda fila de borde a borde que hace scroll horizontal
+          dentro de si misma (la pagina nunca se desplaza de lado); desde md
+          van en la misma fila, con la barra verde de la activa pegada al borde
+          inferior de la barra. */}
+      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-4 px-4 sm:px-6">
         <Link
           href="/entregas"
-          className="flex shrink-0 items-center rounded-md py-1"
+          className="order-1 flex h-14 shrink-0 items-center rounded-md md:h-16"
           aria-label="Panel de despachos, El Imperio"
         >
           <Logo tamano="compacto" animado={animarLogo} />
         </Link>
 
-        {/* Todas las secciones a la vista. En escritorio las pestañas pasan a
-            una segunda fila si no caben; en movil la lista se pliega tras el
-            boton de menu (una sola lista, para que no haya enlaces repetidos). */}
         <nav
           aria-label="Principal"
-          id="nav-principal"
-          className={`order-last w-full pb-2 md:order-none md:block md:w-auto md:flex-1 md:pb-0 ${navAbierta ? "block" : "hidden"}`}
+          className="order-3 -mx-4 w-[calc(100%+2rem)] border-t border-white/10 sm:-mx-6 sm:w-[calc(100%+3rem)] md:order-2 md:mx-0 md:w-auto md:min-w-0 md:flex-1 md:self-stretch md:border-t-0"
         >
-          <ul className="flex flex-col gap-0.5 md:flex-row md:flex-wrap md:items-center md:gap-1">
+          <ul className="flex h-full overflow-x-auto px-1 [scrollbar-color:var(--color-cielo-hover)_transparent] [scrollbar-width:thin] sm:px-3 md:px-0">
             {ENLACES_NAV.map(enlaceSimple)}
           </ul>
         </nav>
 
-        <div className="relative ml-auto flex shrink-0 items-center">
+        <div className="relative order-2 ml-auto flex shrink-0 items-center md:order-3 md:ml-0">
           <button
             onClick={() => setMenuAbierto((a) => !a)}
             aria-haspopup="menu"
             aria-expanded={menuAbierto}
             aria-label="Menú de usuario"
-            className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-white transition-colors duration-150 hover:bg-cielo-hover"
+            className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-full py-1 pl-1 pr-2 text-left transition-colors duration-150 hover:bg-white/10"
           >
-            <span className="hidden font-medium sm:inline">{usuario.nombre}</span>
-            <span className="rounded-full border border-cielo-ink/50 px-2 py-0.5 text-[11px] text-cielo-ink">
-              {ETIQUETA_ROL[usuario.rol]}
+            <span
+              aria-hidden
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-oro text-sm font-bold text-brand-ink"
+            >
+              {iniciales(usuario.nombre)}
             </span>
+            <span className="hidden max-w-40 truncate text-sm font-medium text-white sm:block">{usuario.nombre}</span>
             <svg
               aria-hidden
               viewBox="0 0 24 24"
-              className="h-4 w-4 text-cielo-ink"
+              className={`h-4 w-4 text-cielo-ink transition-transform duration-150 ${menuAbierto ? "rotate-180" : ""}`}
               fill="none"
               stroke="currentColor"
               strokeWidth={2}
@@ -228,11 +321,16 @@ function BarraUsuario() {
               <div className="fixed inset-0 z-40" onClick={() => setMenuAbierto(false)} />
               <div
                 role="menu"
-                className="absolute right-0 z-50 mt-1 flex w-52 flex-col rounded-lg border border-line bg-surface py-1 shadow-md shadow-brand-night/10"
+                className="absolute right-0 top-full z-50 mt-1 flex w-60 flex-col rounded-lg border border-line bg-surface py-1 shadow-md shadow-brand-night/10"
               >
-                <p className="truncate px-3 py-1.5 text-[11px] text-muted">
-                  {usuario.nombre} · @{usuario.usuario}
-                </p>
+                <div className="flex flex-col gap-1.5 border-b border-line px-3 pb-2.5 pt-2">
+                  <p className="truncate text-sm font-semibold text-ink">
+                    {usuario.nombre} · @{usuario.usuario}
+                  </p>
+                  <span className={`w-fit rounded-full border px-2 py-0.5 text-[11px] font-medium ${COLOR_ROL[usuario.rol]}`}>
+                    {ETIQUETA_ROL[usuario.rol]}
+                  </span>
+                </div>
                 <button
                   role="menuitem"
                   onClick={() => {
@@ -243,10 +341,12 @@ function BarraUsuario() {
                 >
                   Cambiar contraseña
                 </button>
+                {/* Cerrar sesion va aparte y en rojo: separado de las acciones normales. */}
+                <div aria-hidden className="my-1 h-px bg-line" />
                 <button
                   role="menuitem"
                   onClick={logout}
-                  className="min-h-11 cursor-pointer px-3 text-left text-sm text-soft transition-colors duration-150 hover:bg-surface-2"
+                  className="min-h-11 cursor-pointer px-3 text-left text-sm font-medium text-danger-fg transition-colors duration-150 hover:bg-surface-2"
                 >
                   Cerrar sesión
                 </button>
@@ -254,27 +354,6 @@ function BarraUsuario() {
             </>
           ) : null}
         </div>
-
-        <button
-          type="button"
-          onClick={() => setNavAbiertaEn(navAbierta ? null : pathname)}
-          aria-expanded={navAbierta}
-          aria-controls="nav-principal"
-          aria-label="Menú de navegación"
-          className="flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-md text-white transition-colors duration-150 hover:bg-cielo-hover md:hidden"
-        >
-          <svg
-            aria-hidden
-            viewBox="0 0 24 24"
-            className="h-5 w-5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-          >
-            {navAbierta ? <path d="M18 6 6 18M6 6l12 12" /> : <path d="M4 6h16M4 12h16M4 18h16" />}
-          </svg>
-        </button>
       </div>
       {/* Portal al body: el modal no debe depender del contexto de apilamiento
           (sticky + z-30) del header para quedar centrado sobre toda la pantalla. */}
