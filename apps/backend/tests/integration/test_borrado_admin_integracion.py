@@ -362,6 +362,10 @@ async def test_usuario_dashboard_con_rastro_no_se_borra(pg, descripcion):
     elif descripcion == "numeros Syscafe asignados":
         punto, otro, usuario = await _punto_y_usuario(pg)
         await insertar_traslado(pg, punto, otro, usuario, numero_syscafe="SYS-9", numero_syscafe_por="Nombre")
+    elif descripcion == "novedades resueltas":
+        # Novedad resuelta desde el dashboard: queda ligada al usuario por solucionado_por_usuario.
+        punto, otro, usuario = await _punto_y_usuario(pg)
+        await insertar_traslado(pg, punto, otro, usuario, solucionado_por_usuario=UUID(objetivo))
     else:  # pragma: no cover
         raise AssertionError(descripcion)
 
