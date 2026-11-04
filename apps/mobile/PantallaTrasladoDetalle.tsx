@@ -10,12 +10,10 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { etiquetaSyscafe, fetchTrasladoPunto, origenTraslado, referenciaTraslado, type EstadoTraslado, type Traslado } from './api';
-import EditorSyscafe from './EditorSyscafe';
 import { mensajeError } from './errorMessages';
 import FirmasTraslado from './FirmasTraslado';
 import ReporteSyscafe from './ReporteSyscafe';
 import ResumenTraslado from './ResumenTraslado';
-import { useSesion } from './SesionContext';
 import { haceCuanto, textoVencimiento } from './SelectorFecha';
 import { HeaderTraslado } from './TrasladoContext';
 import { ACENTO, FUENTE_BODY, FUENTE_BODY_SEMI, FUENTE_DISPLAY, NEUTRAL_400, styles, TEXTO_PRIMARIO } from './tema';
@@ -37,7 +35,6 @@ export const ESTADO_TRASLADO: Record<
 
 export default function PantallaTrasladoDetalle({ route }: Props) {
   const { trasladoId } = route.params;
-  const { sesion } = useSesion();
   const [traslado, setTraslado] = useState<Traslado | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -193,12 +190,6 @@ export default function PantallaTrasladoDetalle({ route }: Props) {
               </View>
             ) : null}
           </View>
-        ) : null}
-
-        {/* Supervision registra o corrige el numero Syscafe (el resto de
-            sesiones lo ve de solo lectura junto a la referencia, arriba). */}
-        {sesion.tipo === 'supervision' ? (
-          <EditorSyscafe traslado={traslado} supervisorId={sesion.supervisor.id} onGuardado={setTraslado} />
         ) : null}
 
         <ReporteSyscafe traslado={traslado} />

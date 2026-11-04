@@ -1,5 +1,5 @@
 // Firmas de un traslado (despacha / transporta / recibe) para las pantallas
-// de detalle -- DetalleTraslado (puntos) y NovedadDetalle (Supervision).
+// de detalle -- DetalleTraslado (puntos).
 // Antes eran 3 miniaturas de 90px lado a lado: la firma se dibuja en el pad
 // a pantalla completa (imagen vertical, ~600x1150, con el trazo en el
 // medio), asi que achicada entera el trazo quedaba ilegible. Ahora se ve UNA

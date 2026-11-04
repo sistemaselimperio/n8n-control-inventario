@@ -163,42 +163,9 @@ export function esErrorTrasladoYaRecibido(err: unknown): boolean {
 
 export const MENSAJE_TRASLADO_YA_RECIBIDO = 'Este traslado ya fue recibido.';
 
-// Caso puntual de NovedadDetalle: otro supervisor (u otro dispositivo) ya
-// resolvio esta misma novedad primero (ver NovedadYaResuelta en
-// app/services/traslados_puntos.py -- 409, mismo criterio que
-// esErrorTrasladoYaRecibido).
-export function esErrorNovedadYaResuelta(err: unknown): boolean {
-  return (
-    esErrorHttp(err) &&
-    err.status === 409 &&
-    typeof err.detail === 'string' &&
-    err.detail.includes('ya fue resuelta')
-  );
-}
-
-export const MENSAJE_NOVEDAD_YA_RESUELTA = 'Esta novedad ya fue resuelta.';
-
-// Caso puntual de NovedadDetalle, distinto del de arriba: la novedad en si
-// sigue libre, pero el CONSECUTIVO que Erika eligio ya lo uso otra novedad
-// resuelta antes (indice unico parcial sobre consecutivo_solucion, ver
-// ConsecutivoDuplicado en app/services/traslados_puntos.py -- 409 con un
-// detail distinto del de esErrorNovedadYaResuelta, asi el movil no confunde
-// los dos casos). A diferencia de "ya fue resuelta", aca el formulario sigue
-// abierto -- Erika solo tiene que cambiar el numero.
-export function esErrorConsecutivoDuplicado(err: unknown): boolean {
-  return (
-    esErrorHttp(err) &&
-    err.status === 409 &&
-    typeof err.detail === 'string' &&
-    err.detail.includes('consecutivo ya está registrado')
-  );
-}
-
-export const MENSAJE_CONSECUTIVO_DUPLICADO = 'Ese consecutivo ya está registrado. Usa otro número.';
-
 // Caso puntual al CONFIRMAR (no al crear): el documento pertenece a otra
 // sede y la que esta confirmando no adjunto un traslado valido (ver
-// NecesitaTrasladoParaConfirmar en duplicates.py) -- a diferencia de los dos
+// NecesitaTrasladoParaConfirmar en duplicates.py) -- a diferencia de los
 // casos de arriba, este SI trae datos que hacen falta (tipo/indicativo) para
 // mostrar la tarjeta de traslado, por eso devuelve el payload en vez de solo
 // un booleano. El backend manda `detail` como objeto (no texto) para este

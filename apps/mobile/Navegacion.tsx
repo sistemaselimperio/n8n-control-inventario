@@ -37,9 +37,6 @@ import PantallaTrasladoResultado from './PantallaTrasladoResultado';
 import PantallaTrasladoBandeja from './PantallaTrasladoBandeja';
 import PantallaTrasladoRecepcion from './PantallaTrasladoRecepcion';
 import PantallaTrasladoDetalle from './PantallaTrasladoDetalle';
-import PantallaNovedadesSupervision from './PantallaNovedadesSupervision';
-import PantallaNovedadDetalle from './PantallaNovedadDetalle';
-import PantallaTrasladosSyscafe from './PantallaTrasladosSyscafe';
 import PantallaInicio from './PantallaInicio';
 import { FUENTE_BODY_BOLD, useEstiloTabBar } from './tema';
 import { MARCA } from './vidrio';
@@ -56,10 +53,6 @@ export type DespachosStackParamList = {
 // es el camino de CREAR un traslado (bodega origen); BandejaRecepcion ->
 // RecepcionTraslado es el de RECIBIRLO (bodega destino) -- las dos ramas
 // cuelgan de InicioTraslados, no una de la otra.
-// NovedadesSupervision -> NovedadDetalle es el camino de Supervision (Erika
-// revisando y resolviendo novedades, ver TrasladoContext.tsx RolTraslados) --
-// rama totalmente aparte, sin nada colgando de InicioTraslados. TrasladosSyscafe
-// (lista del numero Syscafe) -> DetalleTraslado es la otra rama de Supervision.
 export type TrasladosStackParamList = {
   InicioTraslados: undefined;
   NuevoTraslado: undefined;
@@ -68,9 +61,6 @@ export type TrasladosStackParamList = {
   BandejaRecepcion: undefined;
   RecepcionTraslado: { trasladoId: string };
   DetalleTraslado: { trasladoId: string };
-  NovedadesSupervision: undefined;
-  NovedadDetalle: { trasladoId: string };
-  TrasladosSyscafe: undefined;
 };
 
 export type TabsParamList = {
@@ -145,13 +135,11 @@ const Despachos = () => <FlujoFoto flujo="despacho" area="Despachos" />;
 const Remisiones = () => <FlujoFoto flujo="remision" area="Remisiones" />;
 
 // Flujo de traslados entre puntos -- mismo patron que FlujoFoto (Provider en
-// el `layout` del Navigator). La sesion puede ser de un punto o de
-// Supervision; el stack entero cambia de pantallas segun cual sea (ver el
-// JSX mas abajo), nunca se mezclan.
+// el `layout` del Navigator). Solo las sesiones de punto tienen acceso.
 function Traslados() {
   const { sesion, cerrarSesion } = useSesion();
 
-  if (sesion.tipo === 'bodega' || !tieneAcceso(sesion, 'TrasladosPuntos')) {
+  if (sesion.tipo !== 'punto' || !tieneAcceso(sesion, 'TrasladosPuntos')) {
     return <SinAcceso titulo={AREAS.TrasladosPuntos.titulo} icono={AREAS.TrasladosPuntos.icono} />;
   }
 
@@ -161,34 +149,21 @@ function Traslados() {
       layout={({ children, navigation }) => (
         <TrasladoProvider
           navigation={navigation}
-          rol={sesion.tipo}
-          usuario={sesion.tipo === 'punto' ? sesion.usuario : null}
-          punto={sesion.tipo === 'punto' ? sesion.punto : null}
-          supervisor={sesion.tipo === 'supervision' ? sesion.supervisor : null}
+          usuario={sesion.usuario}
+          punto={sesion.punto}
           cerrarSesion={cerrarSesion}
         >
           {children}
         </TrasladoProvider>
       )}
     >
-      {sesion.tipo === 'supervision' ? (
-        <>
-          <TrasladosStack.Screen name="NovedadesSupervision" component={PantallaNovedadesSupervision} />
-          <TrasladosStack.Screen name="NovedadDetalle" component={PantallaNovedadDetalle} />
-          <TrasladosStack.Screen name="TrasladosSyscafe" component={PantallaTrasladosSyscafe} />
-          <TrasladosStack.Screen name="DetalleTraslado" component={PantallaTrasladoDetalle} />
-        </>
-      ) : (
-        <>
-          <TrasladosStack.Screen name="InicioTraslados" component={PantallaTrasladoInicio} />
-          <TrasladosStack.Screen name="NuevoTraslado" component={PantallaTrasladoNuevo} />
-          <TrasladosStack.Screen name="FirmaTransportador" component={PantallaTrasladoFirmaTransportador} />
-          <TrasladosStack.Screen name="ResultadoTraslado" component={PantallaTrasladoResultado} />
-          <TrasladosStack.Screen name="BandejaRecepcion" component={PantallaTrasladoBandeja} />
-          <TrasladosStack.Screen name="RecepcionTraslado" component={PantallaTrasladoRecepcion} />
-          <TrasladosStack.Screen name="DetalleTraslado" component={PantallaTrasladoDetalle} />
-        </>
-      )}
+      <TrasladosStack.Screen name="InicioTraslados" component={PantallaTrasladoInicio} />
+      <TrasladosStack.Screen name="NuevoTraslado" component={PantallaTrasladoNuevo} />
+      <TrasladosStack.Screen name="FirmaTransportador" component={PantallaTrasladoFirmaTransportador} />
+      <TrasladosStack.Screen name="ResultadoTraslado" component={PantallaTrasladoResultado} />
+      <TrasladosStack.Screen name="BandejaRecepcion" component={PantallaTrasladoBandeja} />
+      <TrasladosStack.Screen name="RecepcionTraslado" component={PantallaTrasladoRecepcion} />
+      <TrasladosStack.Screen name="DetalleTraslado" component={PantallaTrasladoDetalle} />
     </TrasladosStack.Navigator>
   );
 }

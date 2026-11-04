@@ -1,6 +1,6 @@
 // Hoja modal que sube desde abajo (fondo oscuro + tarjeta pegada al borde
 // inferior) -- base comun de los selectores de NuevoTraslado: destino
-// (ModalSelectorPunto), fecha (SelectorFecha) y producto (ModalProducto).
+// (punto), fecha (SelectorFecha) y producto (ModalProducto).
 // Tocar el fondo o el boton atras de Android cierra; tocar la tarjeta no
 // propaga al fondo.
 import type { ReactNode } from 'react';

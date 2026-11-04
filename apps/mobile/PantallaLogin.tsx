@@ -95,8 +95,8 @@ export default function PantallaLogin({
   // tiene una unica cuenta (ver scripts/cargar_puntos.py). Con esto tocar el
   // punto lleva directo al PIN.
   usuarioUnicoPorLugar = false,
-  // Botones secundarios al pie (uno o varios) -- ej. "Entrar como
-  // Supervisión de traslados" o la ayuda por WhatsApp (ver PantallaEntrada.tsx).
+  // Botones secundarios al pie (uno o varios) -- ej. la ayuda por WhatsApp
+  // (ver PantallaEntrada.tsx).
   accionExtra,
   // Si viene, solo se ofrecen (y solo entran) usuarios con uno de estos
   // roles. Sin esto el login queda como siempre.

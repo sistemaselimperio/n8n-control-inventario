@@ -7,15 +7,13 @@
 // empresa, selector deslizante Bodega / Traslados y, debajo, el login de esa
 // area. Al entrar, la sesion queda para todas las tabs (ver SesionContext.tsx).
 //   - Bodega: Despachos y Remisiones.
-//   - Traslados: los puntos, y desde ahi "Supervision de traslados" (Erika)
-//     -- es parte de esa area, no una entrada aparte.
+//   - Traslados: los puntos.
 //
 // Si el celular ya tiene un acceso recordado (ver recuerdoLogin.ts) se abre
 // en esa area con la sede de la ultima persona ya elegida.
 import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  BackHandler,
   Image,
   Platform,
   Pressable,
@@ -30,14 +28,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import {
   fetchPuntos,
-  fetchSupervisores,
   fetchUsuariosPunto,
   loginPunto,
-  loginSupervisor,
   type Empleado,
   type Punto,
   type Sede,
-  type Supervisor,
   type UsuarioPunto,
 } from './api';
 import PantallaLogin from './PantallaLogin';
@@ -49,8 +44,7 @@ import { DEGRADADO_ACENTO, MARCA, ProveedorFondo, Vidrio, vibrar } from './vidri
 
 const LOGO = require('./assets/logo-empresa.jpg');
 
-// Pestañas del selector -- 'supervision' no tiene la suya: cuelga de
-// Traslados (se entra con el boton de abajo de la lista de puntos).
+// Pestañas del selector.
 type Area = 'bodega' | 'traslados';
 
 const AREAS: { area: Area; titulo: string; icono: keyof typeof Ionicons.glyphMap }[] = [
@@ -186,7 +180,9 @@ function Entrada({
   onLogin: (sesion: Sesion) => void;
   reducirMovimiento: boolean;
 }) {
-  const [tipo, setTipo] = useState<TipoSesion>(recuerdo.area ?? 'bodega');
+  // Un recuerdo guardado por una version anterior puede traer un area que ya
+  // no existe: cualquier valor que no sea 'punto' abre Bodega.
+  const [tipo, setTipo] = useState<TipoSesion>(recuerdo.area === 'punto' ? 'punto' : 'bodega');
   const entrada = useEntrada(2, reducirMovimiento);
   const [{ texto: textoSaludo, icono: iconoSaludo }] = useState(() => saludo(new Date().getHours()));
 
@@ -209,17 +205,6 @@ function Entrada({
       useNativeDriver: true,
     }).start();
   }, [indiceArea, reducirMovimiento, posicionSelector]);
-
-  // "Atras" desde Supervision vuelve a los puntos. En el resto no se
-  // intercepta: no hay pantalla anterior a esta.
-  useEffect(() => {
-    if (tipo !== 'supervision') return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      setTipo('punto');
-      return true;
-    });
-    return () => sub.remove();
-  }, [tipo]);
 
   const cambiarArea = (area: Area) => {
     const nuevo: TipoSesion = area === 'bodega' ? 'bodega' : 'punto';
@@ -303,7 +288,7 @@ function Entrada({
 
   // key={tipo} en cada PantallaLogin: las ramas devuelven el mismo componente
   // en la misma posicion, y sin la key React reusaria su estado (ej. la lista
-  // de puntos al pasar a Supervision).
+  // de puntos al pasar a Bodega).
   // Los casts de UsuarioLogin/Lugar a los tipos ricos son seguros: los
   // cargarUsuarios/login que se pasan en cada caso son justo los que
   // devuelven esos tipos.
@@ -326,36 +311,7 @@ function Entrada({
           )
         }
         usuarioRecordado={recuerdo.usuarios.punto}
-        accionExtra={[
-          {
-            texto: 'Entrar como Supervisión de traslados',
-            icono: 'shield-checkmark-outline',
-            onPress: () => setTipo('supervision'),
-          },
-          ayuda,
-        ]}
-      />
-    );
-  }
-
-  if (tipo === 'supervision') {
-    return (
-      <PantallaLogin
-        key={tipo}
-        encabezado={encabezado}
-        etiquetaLugar="área"
-        // Un solo "lugar" sintetico -- Supervision no tiene sedes ni
-        // puntos; con un unico lugar PantallaLogin lo elige solo y muestra
-        // directo la lista de supervisores.
-        cargarLugares={async () => [{ id: 'supervision', nombre: 'Supervisión' }]}
-        // Sin argumentos: PantallaLogin pasa el id del lugar, que aca no aplica.
-        cargarUsuarios={() => fetchSupervisores()}
-        login={loginSupervisor}
-        onLogin={(usuario, lugar, largoPin) =>
-          entrar({ tipo: 'supervision', supervisor: usuario as Supervisor }, lugar.id, usuario.id, largoPin)
-        }
-        usuarioRecordado={recuerdo.usuarios.supervision}
-        accionExtra={[{ texto: 'Volver a los puntos', icono: 'arrow-back', onPress: () => setTipo('punto') }, ayuda]}
+        accionExtra={ayuda}
       />
     );
   }

@@ -8,15 +8,13 @@
 // requeriria una libreria nativa (y un .apk nuevo).
 import { createContext, useContext } from 'react';
 
-import type { Empleado, Punto, Sede, Supervisor, UsuarioPunto } from './api';
+import type { Empleado, Punto, Sede, UsuarioPunto } from './api';
 
 // Discriminada por tipo de cuenta -- son tablas distintas en el backend
-// (empleados, usuarios_punto, supervisores), cada una con su propio login.
-// 'supervision' (Erika) entra desde Traslados entre puntos.
+// (empleados, usuarios_punto), cada una con su propio login.
 export type Sesion =
   | { tipo: 'bodega'; empleado: Empleado; sede: Sede }
-  | { tipo: 'punto'; usuario: UsuarioPunto; punto: Punto }
-  | { tipo: 'supervision'; supervisor: Supervisor };
+  | { tipo: 'punto'; usuario: UsuarioPunto; punto: Punto };
 
 export type TipoSesion = Sesion['tipo'];
 
@@ -34,7 +32,7 @@ export function tieneAcceso(sesion: Sesion, area: AreaApp): boolean {
     case 'Remisiones':
       return sesion.tipo === 'bodega' && ROLES_REMISIONES.includes(sesion.empleado.rol);
     case 'TrasladosPuntos':
-      return sesion.tipo === 'punto' || sesion.tipo === 'supervision';
+      return sesion.tipo === 'punto';
   }
 }
 
@@ -45,21 +43,16 @@ export function nombreSesion(sesion: Sesion): string {
       return `${sesion.empleado.nombre} · ${sesion.sede.nombre}`;
     case 'punto':
       return sesion.punto.nombre;
-    case 'supervision':
-      return `Supervisión · ${sesion.supervisor.nombre}`;
   }
 }
 
 // Donde esta trabajando la sesion -- chip de Inicio junto a la fecha.
-// Supervision no tiene sede ni punto, asi que muestra el area.
-export function lugarSesion(sesion: Sesion): { texto: string; icono: 'location-outline' | 'shield-checkmark-outline' } {
+export function lugarSesion(sesion: Sesion): { texto: string; icono: 'location-outline' } {
   switch (sesion.tipo) {
     case 'bodega':
       return { texto: sesion.sede.nombre, icono: 'location-outline' };
     case 'punto':
       return { texto: sesion.punto.nombre, icono: 'location-outline' };
-    case 'supervision':
-      return { texto: 'Supervisión', icono: 'shield-checkmark-outline' };
   }
 }
 

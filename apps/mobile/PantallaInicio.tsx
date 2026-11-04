@@ -40,8 +40,6 @@ import {
   API_BASE_URL,
   fetchFacturasFaltantes,
   fetchFacturasYaSubidas,
-  fetchNovedadesTraslado,
-  listarTrasladosSyscafe,
   fetchResumenHoy,
   fetchTrasladosPunto,
 } from './api';
@@ -436,7 +434,7 @@ function CarruselConsejos({ reducirMovimiento }: { reducirMovimiento: boolean })
 }
 
 // Lo registrado hoy por el bodeguero en su sede, como cifras dentro del
-// encabezado -- solo bodega (punto y supervision no registran documentos).
+// encabezado -- solo bodega (los puntos no registran documentos).
 // Se recarga cada vez que se vuelve a Inicio; si falla la red no se muestra
 // (mismo criterio que Pendientes).
 function CifrasHoy() {
@@ -539,28 +537,6 @@ async function filasMostrador(sedeId: string): Promise<Pendiente[]> {
   ];
 }
 
-async function filaNovedades(): Promise<Pendiente> {
-  const lista = await fetchNovedadesTraslado('pendiente');
-  return {
-    clave: 'novedades',
-    texto: 'Novedades de traslados sin resolver',
-    cantidad: lista.length,
-    icono: 'alert-circle-outline',
-    abrir: (nav) => nav.navigate('TrasladosPuntos', { screen: 'NovedadesSupervision' }),
-  };
-}
-
-async function filaSyscafe(): Promise<Pendiente> {
-  const lista = await listarTrasladosSyscafe({ pendientes: true });
-  return {
-    clave: 'syscafe',
-    texto: 'Traslados sin número Syscafe',
-    cantidad: lista.length,
-    icono: 'receipt-outline',
-    abrir: (nav) => nav.navigate('TrasladosPuntos', { screen: 'TrasladosSyscafe' }),
-  };
-}
-
 async function cargarPendientes(sesion: Sesion): Promise<Pendiente[]> {
   switch (sesion.tipo) {
     case 'bodega':
@@ -580,8 +556,6 @@ async function cargarPendientes(sesion: Sesion): Promise<Pendiente[]> {
         },
       ];
     }
-    case 'supervision':
-      return [await filaNovedades(), await filaSyscafe()];
   }
 }
 

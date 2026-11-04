@@ -1,6 +1,6 @@
 // Numeros de un traslado en las tarjetas de las listas: la hoja del talonario
 // y el numero del traslado en Syscafe, cada uno con su rotulo pequeno encima.
-// Se usa en Enviados/Recibidos, Por recibir y Novedades de Supervision.
+// Se usa en Enviados/Recibidos y Por recibir.
 
 import { StyleSheet, Text, View } from 'react-native';
 import { referenciaTraslado, type Traslado } from './api';

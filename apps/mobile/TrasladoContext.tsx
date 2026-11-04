@@ -11,7 +11,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NavigationHelpers } from '@react-navigation/native';
 import * as Crypto from 'expo-crypto';
 
-import type { Punto, Supervisor, UsuarioPunto } from './api';
+import type { Punto, UsuarioPunto } from './api';
 import { ACENTO, NEUTRAL_500, styles, useEstiloTabBar } from './tema';
 // Type-only -- se borra en compilacion, mismo criterio que EntregaContext.tsx
 // con DespachosStackParamList (sin dependencia de runtime entre los dos
@@ -69,28 +69,16 @@ function nuevoDraft(): TrasladoDraft {
   };
 }
 
-// 'punto': sesion normal de bodega (crear/recibir traslados). 'supervision':
-// Erika revisando y resolviendo novedades -- ver el plan
-// "supervision-novedades". El stack de Traslados renderiza pantallas
-// completamente distintas segun este valor (ver Navegacion.tsx).
-export type RolTraslados = 'punto' | 'supervision';
-
 export interface TrasladoContextValue {
-  rol: RolTraslados;
-  // Solo con sentido para rol 'punto' -- en 'supervision' quedan en null
-  // (las pantallas de supervision usan `supervisor`, no `usuario`/`punto`).
   usuario: UsuarioPunto | null;
   punto: Punto | null;
-  // Solo con sentido para rol 'supervision' -- null en rol 'punto'.
-  supervisor: Supervisor | null;
   cerrarSesion: () => void;
   draft: TrasladoDraft;
   actualizarDraft: (cambios: Partial<TrasladoDraft>) => void;
   reiniciarDraft: () => void;
   cargando: boolean;
   setCargando: (v: boolean) => void;
-  // Descarta el borrador actual y vuelve a la pantalla raiz del rol actual
-  // (InicioTraslados para 'punto', NovedadesSupervision para 'supervision')
+  // Descarta el borrador actual y vuelve a la pantalla raiz (InicioTraslados)
   // -- usado al cancelar NuevoTraslado o al terminar en ResultadoTraslado.
   volverAInicio: () => void;
 }
@@ -105,10 +93,8 @@ export function useTraslado(): TrasladoContextValue {
 
 export function TrasladoProvider({
   navigation,
-  rol,
   usuario,
   punto,
-  supervisor,
   cerrarSesion,
   children,
 }: {
@@ -116,10 +102,8 @@ export function TrasladoProvider({
   // Navigator (ver Navegacion.tsx), mismo motivo que EntregaContext.tsx:
   // useNavigation() aca devolveria la de la TAB, no la del stack.
   navigation: NavigationHelpers<TrasladosStackParamList>;
-  rol: RolTraslados;
   usuario: UsuarioPunto | null;
   punto: Punto | null;
-  supervisor: Supervisor | null;
   cerrarSesion: () => void;
   children: ReactNode;
 }) {
@@ -138,9 +122,9 @@ export function TrasladoProvider({
     reiniciarDraft();
     navigation.reset({
       index: 0,
-      routes: [{ name: rol === 'supervision' ? 'NovedadesSupervision' : 'InicioTraslados' }],
+      routes: [{ name: 'InicioTraslados' }],
     });
-  }, [reiniciarDraft, navigation, rol]);
+  }, [reiniciarDraft, navigation]);
 
   // Mismo criterio que EntregaContext.tsx -- oculta la barra de tabs
   // mientras hay una creacion/recepcion en vuelo, para que no se salga a
@@ -154,10 +138,8 @@ export function TrasladoProvider({
 
   // Valor memoizado para que los consumidores del context no re-rendericen sin cambios reales.
   const value: TrasladoContextValue = useMemo(() => ({
-    rol,
     usuario,
     punto,
-    supervisor,
     cerrarSesion,
     draft,
     actualizarDraft,
@@ -165,7 +147,7 @@ export function TrasladoProvider({
     cargando,
     setCargando,
     volverAInicio,
-  }), [rol, usuario, punto, supervisor, cerrarSesion, draft, actualizarDraft, reiniciarDraft, cargando, volverAInicio]);
+  }), [usuario, punto, cerrarSesion, draft, actualizarDraft, reiniciarDraft, cargando, volverAInicio]);
 
   return <TrasladoContext.Provider value={value}>{children}</TrasladoContext.Provider>;
 }
@@ -180,15 +162,14 @@ export function TrasladoProvider({
 export function HeaderTraslado() {
   const route = useRoute();
   const navigation = useNavigation<NavigationHelpers<TrasladosStackParamList>>();
-  const { rol, usuario, punto, supervisor, cargando, cerrarSesion, volverAInicio } = useTraslado();
+  const { usuario, punto, cargando, cerrarSesion, volverAInicio } = useTraslado();
 
   // Defensivo -- en la practica nunca deberia pasar: TrasladoProvider solo se
-  // monta con sesion de punto o supervision iniciada (ver Navegacion.tsx),
-  // pero sus tipos siguen admitiendo todo en null.
-  if (rol === 'punto' && (!usuario || !punto)) return null;
-  if (rol === 'supervision' && !supervisor) return null;
+  // monta con sesion de punto iniciada (ver Navegacion.tsx), pero sus tipos
+  // siguen admitiendo todo en null.
+  if (!usuario || !punto) return null;
 
-  const esRaiz = rol === 'supervision' ? route.name === 'NovedadesSupervision' : route.name === 'InicioTraslados';
+  const esRaiz = route.name === 'InicioTraslados';
   const descartaAlVolver = route.name === 'NuevoTraslado' || route.name === 'ResultadoTraslado';
 
   const volverAtras = () => {
@@ -207,16 +188,14 @@ export function HeaderTraslado() {
             <Ionicons name="chevron-back" size={26} color={cargando ? NEUTRAL_500 : '#fff'} />
           </Pressable>
         )}
-        {/* Puntos: solo el punto -- en Traslados se entra como el punto (la
-            cuenta se llama igual, ver scripts/cargar_puntos.py), no hay
-            persona que mostrar aparte. Supervision: "Supervisión · Erika",
-            la persona SI importa aca (a diferencia de un punto, un
-            supervisor es alguien puntual, no una cuenta compartida). */}
+        {/* Solo el punto -- en Traslados se entra como el punto (la cuenta se
+            llama igual, ver scripts/cargar_puntos.py), no hay persona que
+            mostrar aparte. */}
         <View style={styles.recuadroIdentidad}>
           <View style={styles.recuadroFila}>
-            <Ionicons name={rol === 'supervision' ? 'shield-checkmark' : 'location'} size={14} color={ACENTO} />
+            <Ionicons name="location" size={14} color={ACENTO} />
             <Text style={styles.recuadroSedeTexto} numberOfLines={1}>
-              {rol === 'supervision' ? `Supervisión · ${supervisor!.nombre}` : punto!.nombre}
+              {punto.nombre}
             </Text>
           </View>
         </View>
