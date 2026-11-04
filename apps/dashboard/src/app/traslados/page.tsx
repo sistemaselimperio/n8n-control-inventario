@@ -8,10 +8,9 @@
 // corrigen el Syscafe en una caja pequeña que se abre encima de la celda
 // (CajaSyscafe: prefijo + indicativo) o desde el detalle; consulta lo ve en solo lectura.
 
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import useSWR from "swr";
 import {
-  buscarConsecutivo,
   fetchActividadTraslados,
   fetchPuntosPublicos,
   listarTrasladosSyscafe,
@@ -83,6 +82,8 @@ function textoBusqueda(f: FilaTrasladoSyscafe): string {
       f.numero_syscafe || f.tipo === "anulada" ? "" : "pendiente",
       f.tipo === "anulada" ? "anulada" : "",
       fechaCorta(f.fecha),
+      // No se ve en la tabla, pero es como se archiva la solucion de una novedad (ej. NPT-1234).
+      f.consecutivo_solucion,
     ]
       .filter(Boolean)
       .join(" "),
@@ -130,18 +131,6 @@ export default function TrasladosPage() {
   const [modoFecha, setModoFecha] = useState<ModoFecha>("todas");
   const [busqueda, setBusqueda] = useState("");
   const busquedaDiferida = useDeferredValue(busqueda);
-  // Busqueda por consecutivo de la solucion (ej. NPT-1234): consulta al backend
-  // con una pausa de 400 ms para no pedir en cada tecla.
-  const [consecutivo, setConsecutivo] = useState("");
-  const [consecutivoConsulta, setConsecutivoConsulta] = useState("");
-  useEffect(() => {
-    const espera = setTimeout(() => setConsecutivoConsulta(consecutivo.trim()), 400);
-    return () => clearTimeout(espera);
-  }, [consecutivo]);
-  const { data: porConsecutivo, error: errorConsecutivo } = useSWR(
-    consecutivoConsulta ? ["buscar-consecutivo", consecutivoConsulta] : null,
-    () => buscarConsecutivo(consecutivoConsulta),
-  );
 
   const { data: puntos } = useSWR("puntos-publicos", fetchPuntosPublicos);
   const {
@@ -291,7 +280,7 @@ export default function TrasladosPage() {
             etiqueta="Buscar traslado"
             valor={busqueda}
             onCambio={setBusqueda}
-            placeholder="Buscar Syscafe, talonario, punto o persona"
+            placeholder="Buscar Syscafe, talonario, punto, persona o consecutivo"
             claseCampo={claseCampo}
           />
 
@@ -347,50 +336,6 @@ export default function TrasladosPage() {
           />
 
           {hayFiltros ? <BotonLimpiarFiltros onClick={limpiarFiltros} /> : null}
-        </div>
-
-        <div className="flex flex-col gap-2 border-b border-line px-4 py-3 sm:px-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <label htmlFor="traslados-consecutivo" className="text-sm text-muted">
-              Buscar por consecutivo
-            </label>
-            <input
-              id="traslados-consecutivo"
-              type="search"
-              value={consecutivo}
-              onChange={(e) => setConsecutivo(e.target.value)}
-              placeholder="Ej. NPT-1234"
-              className={`${claseCampo} cifra w-full uppercase sm:w-56`}
-            />
-          </div>
-          {consecutivoConsulta ? (
-            <div role="region" aria-label="Resultados por consecutivo" className="flex flex-col gap-1">
-              {errorConsecutivo ? (
-                <p className="text-sm text-danger-fg">No se pudo buscar el consecutivo.</p>
-              ) : !porConsecutivo ? (
-                <p className="text-sm text-muted">Buscando…</p>
-              ) : porConsecutivo.length === 0 ? (
-                <p className="text-sm text-muted">Ninguna novedad resuelta coincide con «{consecutivoConsulta}».</p>
-              ) : (
-                <ul className="flex flex-col divide-y divide-line rounded-md border border-line">
-                  {porConsecutivo.map((r) => (
-                    <li key={r.id}>
-                      <button
-                        type="button"
-                        onClick={() => setDetalleId(r.id)}
-                        className="flex w-full cursor-pointer flex-wrap items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-surface-2"
-                      >
-                        <span className="cifra text-ink">{r.consecutivo_solucion ?? "—"}</span>
-                        <span className="text-muted">
-                          {referencia(r)} · {r.punto_origen_nombre ?? ORIGEN_DIRECTO} → {r.punto_destino_nombre ?? "—"}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ) : null}
         </div>
 
         <div className="overflow-hidden rounded-b-lg">

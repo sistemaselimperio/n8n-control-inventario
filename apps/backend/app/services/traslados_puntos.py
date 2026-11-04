@@ -834,7 +834,8 @@ async def listar_traslados_syscafe(
                 po.nombre as punto_origen_nombre, null::uuid as punto_destino_id,
                 null::text as punto_destino_nombre, 'anulada' as estado,
                 a.created_at::date as fecha, a.created_at, a.motivo, ua.nombre as anulado_por_nombre,
-                null::text as tipo_traslado, null::text as novedad_estado
+                null::text as tipo_traslado, null::text as novedad_estado,
+                null::text as consecutivo_solucion
             from talonario_hojas_anuladas a
             join talonarios_punto tp on tp.id = a.talonario_id
             left join puntos po on po.id = tp.punto_id
@@ -848,7 +849,7 @@ async def listar_traslados_syscafe(
                 t.numero_syscafe, t.punto_origen_id, po.nombre as punto_origen_nombre,
                 t.punto_destino_id, pd.nombre as punto_destino_nombre, t.estado, t.fecha,
                 t.created_at, null::text as motivo, null::text as anulado_por_nombre,
-                t.tipo as tipo_traslado, t.novedad_estado
+                t.tipo as tipo_traslado, t.novedad_estado, t.consecutivo_solucion
             from traslados_puntos t
             left join puntos po on po.id = t.punto_origen_id
             left join puntos pd on pd.id = t.punto_destino_id

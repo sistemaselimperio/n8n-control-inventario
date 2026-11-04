@@ -461,6 +461,8 @@ export interface FilaTrasladoSyscafe {
   anulado_por_nombre: string | null;
   // Estado de la novedad del traslado: null si no tuvo novedad (y en las anuladas).
   novedad_estado?: "pendiente" | "resuelta" | null;
+  // Consecutivo de la solucion (ej. "NPT-1234"); la busqueda de /traslados lo encuentra.
+  consecutivo_solucion?: string | null;
 }
 
 // desde/hasta: "YYYY-MM-DD" inclusivos (fecha del traslado; en anuladas, la de creacion).
@@ -629,22 +631,12 @@ const aFilaSyscafe = (t: TrasladoCrudo): FilaTrasladoSyscafe => ({
   motivo: null,
   anulado_por_nombre: null,
   novedad_estado: t.novedad_estado ?? null,
+  consecutivo_solucion: t.consecutivo_solucion ?? null,
 });
 
 export const listarTrasladosRecibidos = async (puntoId: string): Promise<FilaTrasladoSyscafe[]> => {
   const crudos = await getJson<TrasladoCrudo[]>(`/traslados-puntos?destino_id=${encodeURIComponent(puntoId)}`);
   return crudos.map(aFilaSyscafe);
-};
-
-// Busca novedades ya resueltas por consecutivo (ej. "NPT-1234"), coincidencia
-// parcial; devuelve filas listas para la tabla y el detalle de /traslados.
-export interface FilaConsecutivo extends FilaTrasladoSyscafe {
-  consecutivo_solucion: string | null;
-}
-
-export const buscarConsecutivo = async (q: string): Promise<FilaConsecutivo[]> => {
-  const crudos = await getJson<TrasladoCrudo[]>(`/traslados-puntos/buscar-consecutivo?q=${encodeURIComponent(q)}`);
-  return crudos.map((t) => ({ ...aFilaSyscafe(t), consecutivo_solucion: t.consecutivo_solucion ?? null }));
 };
 
 export const fetchPuntosPublicos = () => getJson<{ id: string; nombre: string; codigo: string | null }[]>("/puntos");

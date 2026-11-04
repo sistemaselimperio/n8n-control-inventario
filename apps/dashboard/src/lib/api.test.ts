@@ -457,39 +457,6 @@ describe("productos y traslados", () => {
     ).rejects.toThrow("Ese consecutivo ya está registrado");
   });
 
-  it("buscarConsecutivo codifica la consulta y normaliza las filas", async () => {
-    const fetchMock = mockFetch(
-      respuestaJson([
-        {
-          id: "t1",
-          consecutivo: 5,
-          tipo: "entre_puntos",
-          numero_talonario: "A 6300",
-          talonario_id: null,
-          numero_syscafe: null,
-          punto_origen_id: "p1",
-          punto_origen_nombre: "CFC",
-          punto_destino_id: "p2",
-          punto_destino_nombre: "BDG",
-          estado: "recibido_con_novedad",
-          fecha: "2026-03-05",
-          created_at: "2026-03-05T10:00:00Z",
-          novedad_estado: "resuelta",
-          consecutivo_solucion: "NPT-0012",
-        },
-      ]),
-    );
-    const filas = await api.buscarConsecutivo("npt 12");
-    expect(ultimaLlamada(fetchMock).url).toBe(`${BASE}/traslados-puntos/buscar-consecutivo?q=npt%2012`);
-    expect(filas[0]).toMatchObject({
-      tipo: "traslado",
-      id: "t1",
-      tipo_traslado: "entre_puntos",
-      novedad_estado: "resuelta",
-      consecutivo_solucion: "NPT-0012",
-    });
-  });
-
   it("subirReporteSyscafeDashboard envia multipart con el archivo, sin Content-Type manual", async () => {
     const fetchMock = mockFetch(respuestaJson({ id: "t1", reporte_syscafe_url: "https://x/r.pdf" }));
     const archivo = new File(["%PDF-1.4"], "reporte.pdf", { type: "application/pdf" });

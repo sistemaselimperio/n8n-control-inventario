@@ -7,7 +7,6 @@ import TrasladosPage from "./page";
 
 const api = vi.hoisted(() => ({
   asignarSyscafeDashboard: vi.fn(),
-  buscarConsecutivo: vi.fn(),
   fetchActividadTraslados: vi.fn(),
   fetchPuntosPublicos: vi.fn(),
   listarTrasladosSyscafe: vi.fn(),
@@ -364,37 +363,17 @@ describe("pagina de traslados: novedades", () => {
   });
 });
 
-describe("pagina de traslados: buscar por consecutivo", () => {
-  const resultado = {
-    ...fila({ id: "t9", consecutivo: 9, estado: "recibido_con_novedad", novedad_estado: "resuelta" }),
-    consecutivo_solucion: "NPT-0012",
-  };
-
-  it("busca con pausa, lista las coincidencias y abre el detalle", async () => {
-    api.buscarConsecutivo.mockResolvedValue([resultado]);
+describe("pagina de traslados: busqueda por consecutivo de la solucion", () => {
+  it("la caja principal encuentra el consecutivo, con o sin guion", async () => {
+    api.listarTrasladosSyscafe.mockResolvedValue([
+      ...FILAS,
+      fila({ id: "t9", consecutivo: 9, estado: "recibido_con_novedad", novedad_estado: "resuelta", consecutivo_solucion: "NPT-0012" }),
+    ]);
     montar();
     await screen.findByRole("table");
-    await userEvent.type(screen.getByLabelText("Buscar por consecutivo"), "npt-12");
-    expect(api.buscarConsecutivo).not.toHaveBeenCalled(); // aun dentro de la pausa
-    const region = await screen.findByRole("region", { name: "Resultados por consecutivo" });
-    await waitFor(() => expect(api.buscarConsecutivo).toHaveBeenCalledTimes(1));
-    expect(api.buscarConsecutivo).toHaveBeenCalledWith("npt-12");
-    await userEvent.click(await within(region).findByRole("button", { name: /NPT-0012/ }));
-    expect(screen.getByRole("dialog")).toHaveTextContent("detalle t9");
-  });
-
-  it("sin coincidencias lo dice", async () => {
-    api.buscarConsecutivo.mockResolvedValue([]);
-    montar();
-    await screen.findByRole("table");
-    await userEvent.type(screen.getByLabelText("Buscar por consecutivo"), "zzz");
-    expect(await screen.findByText(/Ninguna novedad resuelta coincide con «zzz»/)).toBeInTheDocument();
-  });
-
-  it("con el campo vacio no consulta", async () => {
-    montar();
-    await screen.findByRole("table");
-    expect(api.buscarConsecutivo).not.toHaveBeenCalled();
-    expect(screen.queryByRole("region", { name: "Resultados por consecutivo" })).toBeNull();
+    expect(screen.queryByLabelText("Buscar por consecutivo")).toBeNull(); // una sola caja de busqueda
+    await userEvent.type(screen.getByLabelText("Buscar traslado"), "npt0012");
+    await waitFor(() => expect(filasTabla()).toHaveLength(1));
+    expect(within(filasTabla()[0]).getByText("TP-000009")).toBeInTheDocument();
   });
 });
