@@ -137,7 +137,7 @@ describe("pagina de traslados: listado", () => {
     montar();
     expect(await screen.findByText("No hay traslados para mostrar.")).toBeInTheDocument();
     await userEvent.click(chip("Vista", /^Pendiente N° Traslado/));
-    expect(await screen.findByText("No hay traslados pendientes de número.")).toBeInTheDocument();
+    expect(await screen.findByText("No hay traslados sin número de traslado.")).toBeInTheDocument();
   });
 
   it("si falla la carga ofrece reintentar", async () => {

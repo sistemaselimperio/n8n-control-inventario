@@ -364,7 +364,7 @@ export default function TrasladosPage() {
           </div>
         ) : visibles.length === 0 ? (
           <EstadoVacio
-            titulo={soloPendientes ? "No hay traslados pendientes de número." : "No hay traslados para mostrar."}
+            titulo={soloPendientes ? "No hay traslados sin número de traslado." : "No hay traslados para mostrar."}
           />
         ) : (
           <div className="overflow-x-auto">
