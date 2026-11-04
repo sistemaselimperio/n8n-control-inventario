@@ -40,6 +40,25 @@ async def crear_supervisor(pool, nombre: str = "Erika", estado: str = "activo") 
     return str(await pool.fetchval("insert into supervisores (nombre, estado) values ($1, $2) returning id", nombre, estado))
 
 
+async def crear_usuario_dashboard(
+    pool, usuario: str = "ana", rol: str = "supervisor", area: str = "traslados"
+) -> tuple[str, dict[str, str]]:
+    """Usuario del dashboard real en la base: devuelve (id, encabezado Authorization)."""
+    from app.services.sesion_dashboard import crear_token, obtener_secreto
+    from tests.helpers import fila_usuario_dashboard
+
+    fila = fila_usuario_dashboard(usuario=usuario, rol=rol, area=area)
+    id_ = str(
+        await pool.fetchval(
+            "insert into usuarios_dashboard (usuario, nombre, rol, area, pass_hash, pass_salt)"
+            " values ($1, $2, $3, $4, $5, $6) returning id",
+            usuario, f"Nombre {usuario}", rol, area, fila["pass_hash"], fila["pass_salt"],
+        )
+    )
+    token, _ = crear_token(id_, obtener_secreto())
+    return id_, {"Authorization": f"Bearer {token}"}
+
+
 async def escenario(pool, sufijo: str = "") -> Escenario:
     """`sufijo` permite crear varios escenarios en un mismo test (nombre y codigo de punto son unicos)."""
     origen = await crear_punto(pool, f"CFC — La Cumbre{sufijo}", f"CFC{sufijo}")

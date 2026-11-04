@@ -111,7 +111,6 @@ def cuerpo_recepcion(items: list[dict], **extra) -> dict:
 
 def cuerpo_solucion(**extra) -> dict:
     cuerpo = {
-        "supervisor_id": SUPERVISOR,
         "solucion": "Se repuso la mercancia faltante",
         "consecutivo_codigo": "npt",
         "consecutivo_numero": "0012",

@@ -157,21 +157,19 @@ class RecepcionTraslado(BaseModel):
     declaracion_aceptada: bool = False
 
 
-class SolucionNovedad(BaseModel):
-    """Payload de POST /traslados-puntos/{id}/solucion -- Supervision marca
-    una novedad como resuelta (ver resolver_novedad en
-    app/services/traslados_puntos.py). `solucion` es obligatoria (no tiene
-    sentido resolver sin explicar que se hizo); se recorta y se limita para
-    no guardar un texto gigante por error.
+class SolucionNovedadDashboard(BaseModel):
+    """Payload de POST /traslados-puntos/{id}/solucion/dashboard -- el usuario
+    de traslados marca una novedad como resuelta (ver resolver_novedad en
+    app/services/traslados_puntos.py); el autor sale de la sesion. `solucion`
+    es obligatoria (no tiene sentido resolver sin explicar que se hizo); se
+    recorta y se limita para no guardar un texto gigante por error.
 
-    El consecutivo (codigo de punto + numero, ej. "NPT-1234") es bajo que
-    numero queda archivada la solucion -- Erika lo busca despues para volver
-    a esa novedad sin tener que recordar el traslado. Solo el formato se
-    valida aca (mayusculas, digitos); que el codigo exista y este activo se
-    valida contra la tabla puntos en resolver_novedad, que necesita el pool
-    async."""
+    El consecutivo (codigo de punto + numero, ej. "NPT-1234") es el numero
+    bajo el que queda archivada la solucion: sirve para volver a esa novedad
+    sin tener que recordar el traslado. Solo el formato se valida aca
+    (mayusculas, digitos); que el codigo exista y este activo se valida contra
+    la tabla puntos en resolver_novedad, que necesita el pool async."""
 
-    supervisor_id: str
     solucion: str
     consecutivo_codigo: str
     # Solo digitos -- se guarda tal cual se escribio (sin sacar ceros a la
@@ -238,11 +236,3 @@ class AsignarSyscafeDashboard(BaseModel):
     # validador de pydantic: un ValueError ahi responderia el 422 con `detail`
     # como lista y el movil necesita un texto.
     numero_syscafe: str | None = None
-
-
-class AsignarSyscafe(AsignarSyscafeDashboard):
-    """Payload de PATCH /traslados-puntos/{id}/syscafe (movil) -- Supervision
-    manda su id, mismo modelo de confianza que SolucionNovedad (el PIN se
-    verifico en el login)."""
-
-    supervisor_id: str

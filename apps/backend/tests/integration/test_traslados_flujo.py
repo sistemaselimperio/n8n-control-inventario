@@ -8,13 +8,14 @@ import uuid
 import asyncpg
 import pytest
 
-from app.models.traslado_punto import SolucionNovedad
+from app.models.traslado_punto import SolucionNovedadDashboard
 from app.services import traslados_puntos as tp
 from app.services.talonarios import TalonarioConflicto, obtener_talonarios_activos
 from tests.integration.conftest import eventos_en_logs
 from tests.integration.datos_traslados import (
     configurar,
     crear_supervisor,
+    crear_usuario_dashboard,
     crear_usuario_punto,
     escenario,
     fila_traslado,
@@ -27,15 +28,14 @@ from tests.integration.datos_traslados import (
 pytestmark = pytest.mark.integration
 
 
-def solucion(esc, **extra) -> SolucionNovedad:
+def solucion(esc, **extra) -> SolucionNovedadDashboard:
     cuerpo = {
-        "supervisor_id": esc.supervisor,
         "solucion": "Se repuso lo faltante",
         "consecutivo_codigo": "cfc",
         "consecutivo_numero": "0012",
     }
     cuerpo.update(extra)
-    return SolucionNovedad(**cuerpo)
+    return SolucionNovedadDashboard(**cuerpo)
 
 
 def _con_id_texto(resultado: dict) -> dict:
@@ -183,11 +183,13 @@ async def traslado_con_novedad(pg, esc, hoja="A 6300") -> str:
 
 async def test_flujo_completo_hasta_resolver_la_novedad(pg, esc):
     traslado_id = await traslado_con_novedad(pg, esc)
-    resuelto = await tp.resolver_novedad(traslado_id, solucion(esc))
+    usuario_id, _ = await crear_usuario_dashboard(pg)
+    resuelto = await tp.resolver_novedad(traslado_id, solucion(esc), usuario_id=usuario_id)
 
     assert resuelto["novedad_estado"] == "resuelta"
     assert resuelto["consecutivo_solucion"] == "CFC-0012"  # codigo en mayusculas, ceros conservados
-    assert str(resuelto["solucionado_por"]) == esc.supervisor and resuelto["solucionado_at"] is not None
+    assert str(resuelto["solucionado_por_usuario"]) == usuario_id and resuelto["solucionado_por"] is None
+    assert resuelto["solucionado_at"] is not None
     assert resuelto["estado"] == "recibido_con_novedad"  # el estado del traslado no cambia al resolver
     assert len(resuelto["items"]) == 2
     assert (await eventos_en_logs(pg))[-1] == "traslado_punto_novedad_resuelta"
@@ -223,12 +225,13 @@ async def test_consecutivos_con_distinto_cero_a_la_izquierda_son_distintos(pg, e
     assert sorted(f["consecutivo_solucion"] for f in await pg.fetch("select consecutivo_solucion from traslados_puntos")) == ["CFC-012", "CFC-12"]
 
 
-async def test_dos_supervisores_resolviendo_a_la_vez_solo_uno_gana(pg, esc):
+async def test_dos_usuarios_resolviendo_a_la_vez_solo_uno_gana(pg, esc):
     traslado_id = await traslado_con_novedad(pg, esc)
-    otro_supervisor = await crear_supervisor(pg, "Otra")
+    uno, _ = await crear_usuario_dashboard(pg, "ana")
+    otro, _ = await crear_usuario_dashboard(pg, "luis")
     resultados = await asyncio.gather(
-        tp.resolver_novedad(traslado_id, solucion(esc, consecutivo_numero="1")),
-        tp.resolver_novedad(traslado_id, solucion(esc, supervisor_id=otro_supervisor, consecutivo_numero="2")),
+        tp.resolver_novedad(traslado_id, solucion(esc, consecutivo_numero="1"), usuario_id=uno),
+        tp.resolver_novedad(traslado_id, solucion(esc, consecutivo_numero="2"), usuario_id=otro),
         return_exceptions=True,
     )
     errores = [r for r in resultados if isinstance(r, BaseException)]
@@ -246,9 +249,9 @@ async def test_resolver_exige_novedad_supervisor_activo_y_codigo_de_punto_valido
     con_novedad = await traslado_con_novedad(pg, esc, "A 6301")
     inactivo = await crear_supervisor(pg, "Inactivo", "inactivo")
     with pytest.raises(tp.NovedadInvalida, match="Supervisor"):
-        await tp.resolver_novedad(con_novedad, solucion(esc, supervisor_id=inactivo))
+        await tp.resolver_novedad(con_novedad, solucion(esc), supervisor_id=inactivo)
     with pytest.raises(tp.NovedadInvalida, match="Supervisor"):
-        await tp.resolver_novedad(con_novedad, solucion(esc, supervisor_id=str(uuid.uuid4())))
+        await tp.resolver_novedad(con_novedad, solucion(esc), supervisor_id=str(uuid.uuid4()))
     with pytest.raises(tp.NovedadInvalida, match="código de punto"):
         await tp.resolver_novedad(con_novedad, solucion(esc, consecutivo_codigo="ZZZ"))
     await pg.execute("update puntos set activo = false where codigo = 'CFC'")
@@ -433,14 +436,6 @@ async def test_syscafe_en_traslado_inexistente(pg, esc):
         await tp.asignar_numero_syscafe(str(uuid.uuid4()), "NBR-945")
 
 
-async def test_syscafe_valida_supervisor_activo(pg, esc):
-    assert await tp.validar_supervisor_activo(esc.supervisor) == "Erika"
-    inactivo = await crear_supervisor(pg, "Baja", "inactivo")
-    for malo in (inactivo, str(uuid.uuid4()), "no-es-uuid"):
-        with pytest.raises(tp.TrasladoInvalido, match="Supervisor invalido"):
-            await tp.validar_supervisor_activo(malo)
-
-
 # ---------------------------------------------------------------------------
 # Listados
 # ---------------------------------------------------------------------------
@@ -547,17 +542,26 @@ async def test_flujo_completo_por_http(cliente, pg, esc):
     assert recibido.status_code == 200 and recibido.json()["estado"] == "recibido_con_novedad"
     assert (await cliente.post(f"/traslados-puntos/{cuerpo['id']}/recepcion", json=cuerpo_recepcion)).status_code == 409
 
+    usuario_id, sesion = await crear_usuario_dashboard(pg, "ana", "supervisor", "traslados")
+    _, sesion_consulta = await crear_usuario_dashboard(pg, "vera", "consulta", "todo")
     cuerpo_solucion = solucion(esc).model_dump(mode="json")
-    assert (await cliente.post(f"/traslados-puntos/{cuerpo['id']}/solucion", json=cuerpo_solucion)).status_code == 200
-    assert (await cliente.post(f"/traslados-puntos/{cuerpo['id']}/solucion", json=cuerpo_solucion)).status_code == 409
+    ruta_solucion = f"/traslados-puntos/{cuerpo['id']}/solucion/dashboard"
+    assert (await cliente.post(ruta_solucion, json=cuerpo_solucion)).status_code == 401
+    assert (await cliente.post(ruta_solucion, json=cuerpo_solucion, headers=sesion_consulta)).status_code == 403
+    resuelta = await cliente.post(ruta_solucion, json=cuerpo_solucion, headers=sesion)
+    assert resuelta.status_code == 200
+    assert resuelta.json()["solucionado_por_usuario"] == usuario_id
+    assert (await cliente.post(ruta_solucion, json=cuerpo_solucion, headers=sesion)).status_code == 409
+    resueltas = (await cliente.get("/traslados-puntos/novedades", params={"estado": "resuelta"})).json()
+    assert resueltas[0]["solucionado_por_nombre"] == "Nombre ana"  # coalesce con usuarios_dashboard
 
     syscafe = await cliente.patch(
-        f"/traslados-puntos/{cuerpo['id']}/syscafe", json={"supervisor_id": esc.supervisor, "numero_syscafe": "nbr 945"}
+        f"/traslados-puntos/{cuerpo['id']}/syscafe/dashboard", json={"numero_syscafe": "nbr 945"}, headers=sesion
     )
     assert syscafe.status_code == 200 and syscafe.json()["numero_syscafe"] == "NBR-945"
     otro = await cliente.post("/traslados-puntos", json=traslado(esc, "A 6301").model_dump(mode="json"))
     choque = await cliente.patch(
-        f"/traslados-puntos/{otro.json()['id']}/syscafe", json={"supervisor_id": esc.supervisor, "numero_syscafe": "NBR-945"}
+        f"/traslados-puntos/{otro.json()['id']}/syscafe/dashboard", json={"numero_syscafe": "NBR-945"}, headers=sesion
     )
     assert choque.status_code == 409 and "A 6300" in choque.json()["detail"]
 

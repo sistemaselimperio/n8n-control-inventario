@@ -258,6 +258,7 @@ async def eliminar_tipo_documento(codigo: str) -> None:
 # (ok o fallidos) tambien cuentan como uso.
 _ACTOR = "'dashboard:' || (select usuario from usuarios_dashboard where id = $1::uuid)"
 _CHEQUEOS_USUARIO_DASHBOARD: list[Chequeo] = [
+    ("novedades resueltas", "select 1 from traslados_puntos where solucionado_por_usuario = $1::uuid"),
     ("eventos en el historial", f"select 1 from logs where actor_id = {_ACTOR}"),
     (
         "intentos de ingreso registrados",

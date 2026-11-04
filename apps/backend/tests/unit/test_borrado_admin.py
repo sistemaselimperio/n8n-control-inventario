@@ -467,7 +467,6 @@ RUTAS = [
         f"/puntos/usuarios/{ID}", borrado._CHEQUEOS_USUARIO_PUNTO,
         {"id": ID, "nombre": "U", "punto_id": ID_OTRO}, None, id="usuario_punto",
     ),
-    pytest.param(f"/supervisores/{ID}", borrado._CHEQUEOS_SUPERVISOR, {"id": ID, "nombre": "E"}, None, id="supervisor"),
     pytest.param(
         "/tipos-documento/fei", borrado._CHEQUEOS_TIPO, {"codigo": "FEI", "descripcion": "d"}, "Tipo de documento no encontrado",
         id="tipo_documento",
@@ -520,7 +519,7 @@ async def test_http_inexistente_da_404(cliente, pool, conn, admin_headers, ruta,
     assert borrados(conn) == []
 
 
-@pytest.mark.parametrize("ruta", [f"/sedes/{ID[:-1]}", "/sedes/no-es-uuid", "/empleados/1", "/puntos/xyz", "/supervisores/%20"])
+@pytest.mark.parametrize("ruta", [f"/sedes/{ID[:-1]}", "/sedes/no-es-uuid", "/empleados/1", "/puntos/xyz"])
 async def test_http_id_que_no_es_uuid_da_422_sin_tocar_la_base(cliente, pool, conn, admin_headers, ruta):
     res = await cliente.delete(ruta, headers=admin_headers)
     assert res.status_code == 422
@@ -630,3 +629,8 @@ async def test_borrar_producto_inexistente_da_404_sin_evento(cliente, pool, conn
     res = await cliente.delete(f"/productos/{ID}", headers=admin_headers)
     assert res.status_code == 404
     assert conn.inserts_log() == []
+
+
+def test_borrar_usuario_dashboard_revisa_las_novedades_que_resolvio():
+    sql = dict(borrado._CHEQUEOS_USUARIO_DASHBOARD)["novedades resueltas"]
+    assert "solucionado_por_usuario = $1::uuid" in sql

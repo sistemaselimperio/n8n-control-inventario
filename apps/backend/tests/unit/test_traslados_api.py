@@ -1,4 +1,4 @@
-"""Router de traslados, puntos, supervisores y talonarios (app/routers/
+"""Router de traslados, puntos y talonarios (app/routers/
 traslados_puntos.py): mapeo de errores a codigos HTTP, validacion de entrada,
 orden de rutas y guardas de autenticacion.
 
@@ -17,7 +17,6 @@ from tests.helpers import encabezado_bearer, fila_usuario_dashboard
 from tests.helpers_traslados import (
     PUNTO_DESTINO,
     PUNTO_ORIGEN,
-    SUPERVISOR,
     USUARIO_ORIGEN,
     cuerpo_llegada_directa,
     cuerpo_recepcion,
@@ -285,6 +284,19 @@ async def test_novedades_resueltas_ordena_la_mas_reciente_primero(cliente, pool,
     assert args == ("resuelta",) and "order by t.solucionado_at desc" in sql
 
 
+async def test_solucionado_por_nombre_sale_del_supervisor_o_del_usuario_del_dashboard(cliente, pool, conn):
+    uid = uuid.uuid4()
+    fila = _resultado_traslado(novedad_estado="resuelta", solucionado_por_usuario=uid, solucionado_por_nombre="Ana Prueba")
+    fila.pop("items")
+    conn.responder("fetch", "t.novedad_estado = $1", [fila])
+    res = await cliente.get("/traslados-puntos/novedades", params={"estado": "resuelta"})
+    (_, sql, _) = conn.sql_ejecutado("t.novedad_estado = $1")[0]
+    assert "coalesce(s.nombre, ud.nombre) as solucionado_por_nombre" in sql
+    assert "left join usuarios_dashboard ud on ud.id = t.solucionado_por_usuario" in sql
+    (item,) = res.json()
+    assert item["solucionado_por_nombre"] == "Ana Prueba" and item["solucionado_por_usuario"] == str(uid)
+
+
 async def test_buscar_consecutivo_vacio_no_consulta_la_base(cliente, pool, conn):
     res = await cliente.get("/traslados-puntos/buscar-consecutivo", params={"q": "   "})
     assert (res.status_code, res.json()) == (200, [])
@@ -392,10 +404,60 @@ async def test_recepcion_valida_la_entrada(cliente, monkeypatch, cuerpo):
     assert llamadas == []
 
 
-async def test_solucion_exitosa(cliente, monkeypatch):
-    _servicio(monkeypatch, "resolver_novedad", lambda: _resultado_traslado(novedad_estado="resuelta"))
-    res = await cliente.post(f"/traslados-puntos/{TRASLADO}/solucion", json=cuerpo_solucion())
-    assert res.status_code == 200 and res.json()["novedad_estado"] == "resuelta"
+def _sesion(conn, **kwargs) -> dict:
+    fila = fila_usuario_dashboard(**kwargs)
+    conn.responder("fetchrow", "from usuarios_dashboard where id", fila)
+    return encabezado_bearer(fila)
+
+
+RUTA_SOLUCION = f"/traslados-puntos/{TRASLADO}/solucion/dashboard"
+
+
+async def test_solucion_dashboard_sin_credenciales_responde_401(cliente, pool, monkeypatch):
+    llamadas: list = []
+    _servicio(monkeypatch, "resolver_novedad", {}, llamadas=llamadas)
+    res = await cliente.post(RUTA_SOLUCION, json=cuerpo_solucion())
+    assert res.status_code == 401 and llamadas == []
+
+
+@pytest.mark.parametrize(
+    "rol, area, codigo",
+    [
+        ("admin", "todo", 200),
+        ("supervisor", "todo", 200),
+        ("supervisor", "traslados", 200),
+        ("supervisor", "bodega", 403),
+        ("consulta", "traslados", 403),
+        ("consulta", "todo", 403),
+    ],
+)
+async def test_solucion_dashboard_segun_rol_y_area(cliente, pool, conn, monkeypatch, rol, area, codigo):
+    llamadas: list = []
+    _servicio(monkeypatch, "resolver_novedad", lambda: _resultado_traslado(novedad_estado="resuelta"), llamadas=llamadas)
+    res = await cliente.post(RUTA_SOLUCION, json=cuerpo_solucion(), headers=_sesion(conn, rol=rol, area=area))
+    assert res.status_code == codigo
+    assert bool(llamadas) == (codigo == 200)  # un 403 jamas llega a escribir
+    if codigo == 200:
+        assert res.json()["novedad_estado"] == "resuelta"
+
+
+async def test_solucion_dashboard_pasa_el_id_del_usuario_de_la_sesion(cliente, pool, conn, monkeypatch):
+    llamadas: list = []
+    _servicio(monkeypatch, "resolver_novedad", lambda: _resultado_traslado(), llamadas=llamadas)
+    fila = fila_usuario_dashboard(rol="supervisor", area="traslados")
+    conn.responder("fetchrow", "from usuarios_dashboard where id", fila)
+    await cliente.post(RUTA_SOLUCION, json=cuerpo_solucion(), headers=encabezado_bearer(fila))
+    (args, kwargs) = llamadas[0]
+    assert args[0] == TRASLADO and kwargs["usuario_id"] == fila["id"]
+
+
+async def test_solucion_dashboard_con_token_legacy_queda_sin_autor(cliente, pool, monkeypatch, admin_headers):
+    llamadas: list = []
+    _servicio(monkeypatch, "resolver_novedad", lambda: _resultado_traslado(), llamadas=llamadas)
+    res = await cliente.post(RUTA_SOLUCION, json=cuerpo_solucion(), headers=admin_headers)
+    assert res.status_code == 200
+    (_, kwargs) = llamadas[0]
+    assert kwargs["usuario_id"] is None and kwargs["actor_log"] == "dashboard:token"
 
 
 @pytest.mark.parametrize(
@@ -404,21 +466,21 @@ async def test_solucion_exitosa(cliente, monkeypatch):
         (tp.NovedadNoEncontrada("Traslado no encontrado"), 404),
         (tp.NovedadYaResuelta("Esta novedad ya fue resuelta"), 409),
         (tp.ConsecutivoDuplicado("Ese consecutivo ya está registrado"), 409),
-        (tp.NovedadInvalida("Supervisor invalido o inactivo"), 422),
+        (tp.NovedadInvalida("El código de punto del consecutivo no es válido"), 422),
     ],
 )
-async def test_solucion_mapea_errores(cliente, monkeypatch, error, codigo):
+async def test_solucion_dashboard_mapea_errores(cliente, pool, monkeypatch, admin_headers, error, codigo):
     _servicio(monkeypatch, "resolver_novedad", lanza=error)
-    res = await cliente.post(f"/traslados-puntos/{TRASLADO}/solucion", json=cuerpo_solucion())
+    res = await cliente.post(RUTA_SOLUCION, json=cuerpo_solucion(), headers=admin_headers)
     assert (res.status_code, res.json()["detail"]) == (codigo, str(error))
 
 
-async def test_los_dos_409_de_la_solucion_tienen_detalle_distinto(cliente, monkeypatch):
-    """El movil distingue 'ya la resolvio otro' de 'ese consecutivo ya existe' por el texto."""
+async def test_los_dos_409_de_la_solucion_tienen_detalle_distinto(cliente, pool, monkeypatch, admin_headers):
+    """El dashboard distingue 'ya la resolvio otro' de 'ese consecutivo ya existe' por el texto."""
     _servicio(monkeypatch, "resolver_novedad", lanza=tp.NovedadYaResuelta("Esta novedad ya fue resuelta"))
-    a = (await cliente.post(f"/traslados-puntos/{TRASLADO}/solucion", json=cuerpo_solucion())).json()["detail"]
+    a = (await cliente.post(RUTA_SOLUCION, json=cuerpo_solucion(), headers=admin_headers)).json()["detail"]
     _servicio(monkeypatch, "resolver_novedad", lanza=tp.ConsecutivoDuplicado("Ese consecutivo ya está registrado"))
-    b = (await cliente.post(f"/traslados-puntos/{TRASLADO}/solucion", json=cuerpo_solucion())).json()["detail"]
+    b = (await cliente.post(RUTA_SOLUCION, json=cuerpo_solucion(), headers=admin_headers)).json()["detail"]
     assert a != b
 
 
@@ -426,76 +488,23 @@ async def test_los_dos_409_de_la_solucion_tienen_detalle_distinto(cliente, monke
     "cambio",
     [{"solucion": "  "}, {"solucion": "x" * 2001}, {"consecutivo_codigo": "N-1"}, {"consecutivo_numero": "12a"}, {"consecutivo_numero": ""}],
 )
-async def test_solucion_valida_la_entrada(cliente, monkeypatch, cambio):
+async def test_solucion_dashboard_valida_la_entrada(cliente, pool, monkeypatch, admin_headers, cambio):
     llamadas: list = []
     _servicio(monkeypatch, "resolver_novedad", {}, llamadas=llamadas)
-    res = await cliente.post(f"/traslados-puntos/{TRASLADO}/solucion", json=cuerpo_solucion(**cambio))
+    res = await cliente.post(RUTA_SOLUCION, json=cuerpo_solucion(**cambio), headers=admin_headers)
     assert res.status_code == 422 and llamadas == []
 
 
+async def test_las_rutas_del_movil_de_supervision_ya_no_existen(cliente, pool):
+    assert (await cliente.post(f"/traslados-puntos/{TRASLADO}/solucion", json={})).status_code in (404, 405)
+    assert (await cliente.patch(f"/traslados-puntos/{TRASLADO}/syscafe", json={})).status_code in (404, 405)
+    assert (await cliente.post("/supervisores/auth/pin", json={})).status_code in (404, 405)
+    assert (await cliente.get("/supervisores")).status_code in (404, 405)
+
+
 # ---------------------------------------------------------------------------
-# Syscafe (movil y dashboard)
+# Syscafe (dashboard)
 # ---------------------------------------------------------------------------
-
-
-async def test_syscafe_movil_guarda_con_el_nombre_del_supervisor(cliente, monkeypatch):
-    llamadas: list = []
-    _servicio(monkeypatch, "validar_supervisor_activo", "Erika")
-    _servicio(monkeypatch, "asignar_numero_syscafe", lambda: _resultado_traslado(numero_syscafe="NBR-945"), llamadas=llamadas)
-    res = await cliente.patch(
-        f"/traslados-puntos/{TRASLADO}/syscafe", json={"supervisor_id": SUPERVISOR, "numero_syscafe": "nbr 945"}
-    )
-    assert res.status_code == 200 and res.json()["numero_syscafe"] == "NBR-945"
-    assert llamadas == [((TRASLADO, "NBR-945", "Erika"), {})]  # el router ya normalizo el valor
-
-
-async def test_syscafe_movil_con_supervisor_invalido_responde_422_sin_escribir(cliente, monkeypatch):
-    llamadas: list = []
-    _servicio(monkeypatch, "validar_supervisor_activo", lanza=tp.TrasladoInvalido("Supervisor invalido o inactivo"))
-    _servicio(monkeypatch, "asignar_numero_syscafe", {}, llamadas=llamadas)
-    res = await cliente.patch(
-        f"/traslados-puntos/{TRASLADO}/syscafe", json={"supervisor_id": SUPERVISOR, "numero_syscafe": "NBR-945"}
-    )
-    assert (res.status_code, res.json()["detail"]) == (422, "Supervisor invalido o inactivo")
-    assert llamadas == []
-
-
-async def test_syscafe_con_formato_invalido_responde_422_con_texto_y_no_escribe(cliente, monkeypatch):
-    llamadas: list = []
-    _servicio(monkeypatch, "validar_supervisor_activo", "Erika")
-    _servicio(monkeypatch, "asignar_numero_syscafe", {}, llamadas=llamadas)
-    res = await cliente.patch(
-        f"/traslados-puntos/{TRASLADO}/syscafe", json={"supervisor_id": SUPERVISOR, "numero_syscafe": "945"}
-    )
-    assert res.status_code == 422 and isinstance(res.json()["detail"], str)  # texto, no lista de pydantic
-    assert llamadas == []
-
-
-@pytest.mark.parametrize(
-    "error, codigo",
-    [(tp.TrasladoNoEncontrado("Traslado no encontrado"), 404), (tp.SyscafeDuplicado("ya asignado a A 6305"), 409)],
-)
-async def test_syscafe_mapea_errores_del_servicio(cliente, monkeypatch, error, codigo):
-    _servicio(monkeypatch, "validar_supervisor_activo", "Erika")
-    _servicio(monkeypatch, "asignar_numero_syscafe", lanza=error)
-    res = await cliente.patch(
-        f"/traslados-puntos/{TRASLADO}/syscafe", json={"supervisor_id": SUPERVISOR, "numero_syscafe": "NBR-945"}
-    )
-    assert (res.status_code, res.json()["detail"]) == (codigo, str(error))
-
-
-async def test_syscafe_movil_valor_vacio_borra(cliente, monkeypatch):
-    llamadas: list = []
-    _servicio(monkeypatch, "validar_supervisor_activo", "Erika")
-    _servicio(monkeypatch, "asignar_numero_syscafe", lambda: _resultado_traslado(numero_syscafe=None), llamadas=llamadas)
-    res = await cliente.patch(f"/traslados-puntos/{TRASLADO}/syscafe", json={"supervisor_id": SUPERVISOR, "numero_syscafe": ""})
-    assert res.status_code == 200 and llamadas[0][0][1] is None
-
-
-def _sesion(conn, **kwargs) -> dict:
-    fila = fila_usuario_dashboard(**kwargs)
-    conn.responder("fetchrow", "from usuarios_dashboard where id", fila)
-    return encabezado_bearer(fila)
 
 
 RUTA_SYSCAFE_DASHBOARD = f"/traslados-puntos/{TRASLADO}/syscafe/dashboard"
@@ -555,7 +564,7 @@ async def test_syscafe_dashboard_formato_invalido_responde_422(cliente, pool, mo
 
 
 # ---------------------------------------------------------------------------
-# Guardas de los endpoints administrativos de puntos y supervisores
+# Guardas de los endpoints administrativos de puntos
 # ---------------------------------------------------------------------------
 
 OTRO = str(uuid.uuid4())
@@ -567,15 +576,10 @@ ADMINISTRATIVOS = [
     ("POST", f"/puntos/usuarios/{OTRO}/pin", {"pin": "1234"}),
     ("PATCH", f"/puntos/{OTRO}", {"nombre": "Otro"}),
     ("DELETE", f"/puntos/{OTRO}", None),
-    ("POST", "/supervisores", {"nombre": "Erika", "pin": "1234"}),
-    ("PATCH", f"/supervisores/{OTRO}", {"nombre": "Erika"}),
-    ("DELETE", f"/supervisores/{OTRO}", None),
-    ("POST", f"/supervisores/{OTRO}/pin", {"pin": "1234"}),
 ]
 LECTURAS_CON_INACTIVOS = [
     "/puntos?incluir_inactivos=true",
     f"/puntos/{PUNTO_ORIGEN}/usuarios?incluir_inactivos=true",
-    "/supervisores?incluir_inactivos=true",
 ]
 
 
@@ -636,12 +640,6 @@ async def test_listar_usuarios_de_punto_nunca_expone_el_pin(cliente, pool, conn)
     assert "estado = 'activo'" in sql  # el listado publico solo trae activos
 
 
-async def test_listar_supervisores_publico_solo_trae_activos_y_sin_pin(cliente, pool, conn):
-    conn.responder("fetch", "from supervisores where estado = 'activo'", [{"id": uuid.UUID(SUPERVISOR), "nombre": "Erika"}])
-    res = await cliente.get("/supervisores")
-    assert res.json() == [{"id": SUPERVISOR, "nombre": "Erika"}]
-
-
 async def test_crear_punto_con_token_admin(cliente, pool, conn, admin_headers):
     conn.responder("fetchrow", "insert into puntos", {"id": uuid.UUID(PUNTO_ORIGEN), "nombre": "Nuevo"})
     res = await cliente.post("/puntos", json={"nombre": "Nuevo"}, headers=admin_headers)
@@ -657,7 +655,7 @@ async def test_crear_punto_repetido_responde_400(cliente, pool, conn, admin_head
 
 
 # ---------------------------------------------------------------------------
-# Login por PIN de puntos y supervisores
+# Login por PIN de puntos
 # ---------------------------------------------------------------------------
 
 
@@ -684,13 +682,3 @@ async def test_login_de_punto_con_pin_incorrecto_o_usuario_inactivo(cliente, poo
 
 async def test_login_de_punto_con_pin_de_formato_invalido_responde_422(cliente, pool):
     assert (await cliente.post("/puntos/auth/pin", json={"usuario_id": USUARIO_ORIGEN, "pin": "12"})).status_code == 422
-
-
-async def test_login_de_supervisor(cliente, pool, conn):
-    fila = _usuario_con_pin("4321")
-    conn.responder("fetchrow", "from supervisores where id", fila, fila, None)
-    bueno = await cliente.post("/supervisores/auth/pin", json={"supervisor_id": SUPERVISOR, "pin": "4321"})
-    malo = await cliente.post("/supervisores/auth/pin", json={"supervisor_id": SUPERVISOR, "pin": "1111"})
-    inactivo = await cliente.post("/supervisores/auth/pin", json={"supervisor_id": SUPERVISOR, "pin": "4321"})
-    assert (bueno.status_code, malo.status_code, inactivo.status_code) == (200, 401, 401)
-    assert "pin_hash" not in bueno.json()

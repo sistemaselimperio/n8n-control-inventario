@@ -18,7 +18,7 @@ from app.models.log import EventoLog
 from app.models.traslado_punto import (
     LlegadaDirectaCrear,
     RecepcionTraslado,
-    SolucionNovedad,
+    SolucionNovedadDashboard,
     TrasladoPuntoCrear,
     normalizar_numero_syscafe,
 )
@@ -588,11 +588,24 @@ async def registrar_recepcion(traslado_id: str, payload: RecepcionTraslado) -> d
     return resultado
 
 
-async def resolver_novedad(traslado_id: str, payload: SolucionNovedad) -> dict:
-    """Supervision (Erika) carga la solucion de una novedad ya registrada por
-    registrar_recepcion. No valida contra los items -- la novedad puede ser
-    tanto una diferencia de cantidad como algo cualitativo (ver
-    registrar_recepcion), la solucion es texto libre en cualquier caso."""
+async def resolver_novedad(
+    traslado_id: str,
+    payload: SolucionNovedadDashboard,
+    *,
+    usuario_id: str | None = None,
+    supervisor_id: str | None = None,
+    actor_log: str = "dashboard:token",
+) -> dict:
+    """Carga la solucion de una novedad ya registrada por registrar_recepcion.
+    No valida contra los items -- la novedad puede ser tanto una diferencia de
+    cantidad como algo cualitativo (ver registrar_recepcion), la solucion es
+    texto libre en cualquier caso.
+
+    El autor es un usuario del dashboard (`usuario_id`, columna
+    solucionado_por_usuario) o, para las novedades historicas, un supervisor
+    (`supervisor_id`, columna solucionado_por). Con el token legacy no hay
+    ninguno de los dos: la solucion queda sin autor y el evento de logs usa
+    `actor_log`."""
     pool = await get_pool()
 
     traslado = await pool.fetchrow("select * from traslados_puntos where id = $1::uuid", traslado_id)
@@ -601,14 +614,15 @@ async def resolver_novedad(traslado_id: str, payload: SolucionNovedad) -> dict:
     if traslado["novedad_estado"] is None:
         raise NovedadInvalida("Este traslado no tiene una novedad para resolver")
 
-    supervisor = await pool.fetchrow(
-        "select id from supervisores where id = $1::uuid and estado = 'activo'", payload.supervisor_id
-    )
-    if supervisor is None:
-        raise NovedadInvalida("Supervisor invalido o inactivo")
+    if supervisor_id is not None:
+        supervisor = await pool.fetchrow(
+            "select id from supervisores where id = $1::uuid and estado = 'activo'", supervisor_id
+        )
+        if supervisor is None:
+            raise NovedadInvalida("Supervisor invalido o inactivo")
 
     # El codigo ya viene normalizado a mayusculas (ver _consecutivo_codigo_valido
-    # en SolucionNovedad) -- aca se valida que exista de verdad y este activo,
+    # en SolucionNovedadDashboard) -- aca se valida que exista de verdad y este activo,
     # cosa que el validador de pydantic no puede hacer (no tiene el pool async).
     punto_consecutivo = await pool.fetchrow(
         "select id from puntos where codigo = $1 and activo = true", payload.consecutivo_codigo
@@ -633,14 +647,16 @@ async def resolver_novedad(traslado_id: str, payload: SolucionNovedad) -> dict:
                     """
                     update traslados_puntos
                     set novedad_estado = 'resuelta', solucion = $2, solucionado_por = $3::uuid,
-                        solucionado_at = now(), consecutivo_solucion = $4
+                        solucionado_por_usuario = $5::uuid, solucionado_at = now(),
+                        consecutivo_solucion = $4
                     where id = $1::uuid and novedad_estado = 'pendiente'
                     returning *
                     """,
                     traslado_id,
                     payload.solucion,
-                    payload.supervisor_id,
+                    supervisor_id,
                     consecutivo_solucion,
+                    usuario_id,
                 )
             except asyncpg.UniqueViolationError as exc:
                 raise ConsecutivoDuplicado("Ese consecutivo ya está registrado") from exc
@@ -655,7 +671,7 @@ async def resolver_novedad(traslado_id: str, payload: SolucionNovedad) -> dict:
         EventoLog.TRASLADO_PUNTO_NOVEDAD_RESUELTA,
         entidad_tipo="traslado_punto",
         entidad_id=traslado_id,
-        actor_id=payload.supervisor_id,
+        actor_id=usuario_id or supervisor_id or actor_log,
         sede_id=str(traslado["punto_destino_id"]),
         resultado="ok",
     )
@@ -786,21 +802,6 @@ async def subir_reporte_syscafe(traslado_id: str, contenido: bytes, content_type
     return resultado
 
 
-async def validar_supervisor_activo(supervisor_id: str) -> str:
-    """Misma validacion de confianza que resolver_novedad: el supervisor tiene
-    que existir y estar activo. Lanza TrasladoInvalido si no; devuelve su nombre."""
-    pool = await get_pool()
-    try:
-        fila = await pool.fetchrow(
-            "select id, nombre from supervisores where id = $1::uuid and estado = 'activo'", supervisor_id
-        )
-    except asyncpg.DataError:
-        fila = None
-    if fila is None:
-        raise TrasladoInvalido("Supervisor invalido o inactivo")
-    return fila["nombre"]
-
-
 async def listar_traslados_syscafe(
     punto_id: str | None, pendientes: bool, desde: date | None = None, hasta: date | None = None
 ) -> list[dict]:
@@ -928,12 +929,13 @@ async def listar_actividad(limite: int = 50) -> list[dict]:
             where t.recibido_at is not null and t.tipo <> 'directo'
             order by t.recibido_at desc limit $1)
             union all
-            (select 'solucion', t.solucionado_at, t.id, {ref}, po.nombre, pd.nombre, s.nombre,
+            (select 'solucion', t.solucionado_at, t.id, {ref}, po.nombre, pd.nombre, coalesce(s.nombre, ud.nombre),
                 t.consecutivo_solucion, t.estado, t.tipo
             from traslados_puntos t
             left join puntos po on po.id = t.punto_origen_id
             left join puntos pd on pd.id = t.punto_destino_id
             left join supervisores s on s.id = t.solucionado_por
+            left join usuarios_dashboard ud on ud.id = t.solucionado_por_usuario
             where t.solucionado_at is not null
             order by t.solucionado_at desc limit $1)
             union all

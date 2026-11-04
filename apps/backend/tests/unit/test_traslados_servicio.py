@@ -12,7 +12,7 @@ import pytest
 from app.models.traslado_punto import (
     LlegadaDirectaCrear,
     RecepcionTraslado,
-    SolucionNovedad,
+    SolucionNovedadDashboard,
     TrasladoPuntoCrear,
 )
 from app.services import traslados_puntos as tp
@@ -521,18 +521,46 @@ def _conn_novedad(conn):
     conn.responder("fetch", "from traslado_punto_items", [{"id": ITEM_A}])
 
 
-def _solucion(**extra) -> SolucionNovedad:
-    return SolucionNovedad(**cuerpo_solucion(**extra))
+USUARIO_DASHBOARD = "77777777-7777-7777-7777-777777777777"
+
+
+def _solucion(**extra) -> SolucionNovedadDashboard:
+    return SolucionNovedadDashboard(**cuerpo_solucion(**extra))
 
 
 async def test_resolver_novedad_archiva_el_consecutivo_y_deja_evento(pool, conn):
     _conn_novedad(conn)
-    resultado = await tp.resolver_novedad(TRASLADO, _solucion())
+    resultado = await tp.resolver_novedad(TRASLADO, _solucion(), usuario_id=USUARIO_DASHBOARD)
     assert resultado["consecutivo_solucion"] == "NPT-0012"  # conserva los ceros a la izquierda
     assert resultado["items"] == [{"id": ITEM_A}]
     assert conn.eventos_log() == ["traslado_punto_novedad_resuelta"]
     (_, _, entidad, actor, sede, res, _) = conn.inserts_log()[0]
-    assert (entidad, actor, sede, res) == (TRASLADO, SUPERVISOR, PUNTO_DESTINO, "ok")
+    assert (entidad, actor, sede, res) == (TRASLADO, USUARIO_DASHBOARD, PUNTO_DESTINO, "ok")
+
+
+async def test_resolver_novedad_guarda_el_usuario_del_dashboard_y_no_valida_supervisor(pool, conn):
+    _conn_novedad(conn)
+    await tp.resolver_novedad(TRASLADO, _solucion(), usuario_id=USUARIO_DASHBOARD)
+    (_, sql, args) = conn.sql_ejecutado("update traslados_puntos")[0]
+    assert "solucionado_por_usuario = $5::uuid" in sql
+    assert args[2] is None and args[4] == USUARIO_DASHBOARD  # solucionado_por (supervisor) vacio
+    assert conn.sql_ejecutado("from supervisores where id") == []
+
+
+async def test_resolver_novedad_con_token_legacy_queda_sin_autor_y_loguea_el_actor(pool, conn):
+    _conn_novedad(conn)
+    await tp.resolver_novedad(TRASLADO, _solucion(), actor_log="dashboard:token")
+    (_, sql, args) = conn.sql_ejecutado("update traslados_puntos")[0]
+    assert args[2] is None and args[4] is None
+    (_, _, _, actor, _, _, _) = conn.inserts_log()[0]
+    assert actor == "dashboard:token"
+
+
+async def test_resolver_novedad_con_supervisor_historico_valida_y_guarda_solucionado_por(pool, conn):
+    _conn_novedad(conn)
+    await tp.resolver_novedad(TRASLADO, _solucion(), supervisor_id=SUPERVISOR)
+    (_, _, args) = conn.sql_ejecutado("update traslados_puntos")[0]
+    assert args[2] == SUPERVISOR and args[4] is None
 
 
 async def test_resolver_novedad_el_update_solo_aplica_a_novedades_pendientes(pool, conn):
@@ -559,7 +587,7 @@ async def test_resolver_novedad_supervisor_inactivo(pool, conn):
     _conn_novedad(conn)
     conn._reglas.insert(0, ("fetchrow", "from supervisores where id", [None]))
     with pytest.raises(tp.NovedadInvalida, match="Supervisor"):
-        await tp.resolver_novedad(TRASLADO, _solucion())
+        await tp.resolver_novedad(TRASLADO, _solucion(), supervisor_id=SUPERVISOR)
     assert conn.sql_ejecutado("update traslados_puntos") == []
 
 
@@ -593,7 +621,7 @@ def test_las_excepciones_de_conflicto_son_distinguibles():
 
 
 # ---------------------------------------------------------------------------
-# asignar_numero_syscafe / validar_supervisor_activo
+# asignar_numero_syscafe
 # ---------------------------------------------------------------------------
 
 
@@ -640,25 +668,6 @@ async def test_syscafe_duplicado_nombra_el_otro_traslado(pool, conn, otro, refer
     with pytest.raises(tp.SyscafeDuplicado) as exc:
         await tp.asignar_numero_syscafe(TRASLADO, "NBR-945")
     assert "NBR-945" in str(exc.value) and referencia in str(exc.value)
-
-
-async def test_validar_supervisor_activo_devuelve_el_nombre(pool, conn):
-    conn.responder("fetchrow", "from supervisores", {"id": SUPERVISOR, "nombre": "Erika"})
-    assert await tp.validar_supervisor_activo(SUPERVISOR) == "Erika"
-
-
-async def test_validar_supervisor_inexistente_o_inactivo(pool, conn):
-    conn.responder("fetchrow", "from supervisores", None)
-    with pytest.raises(tp.TrasladoInvalido, match="Supervisor invalido"):
-        await tp.validar_supervisor_activo(SUPERVISOR)
-
-
-async def test_validar_supervisor_con_id_mal_formado_no_revienta(pool, conn):
-    import asyncpg
-
-    conn.responder("fetchrow", "from supervisores", asyncpg.DataError("invalid input for query argument"))
-    with pytest.raises(tp.TrasladoInvalido, match="Supervisor invalido"):
-        await tp.validar_supervisor_activo("no-es-uuid")
 
 
 # ---------------------------------------------------------------------------
@@ -928,3 +937,11 @@ async def test_listar_actividad_serializa_el_id_del_traslado(pool, conn):
     (item,) = await tp.listar_actividad()
     assert item["traslado_id"] == str(uid)
     assert conn.sql_ejecutado("union all")[0][2] == (50,)
+
+
+async def test_listar_actividad_toma_el_nombre_de_quien_soluciono_del_supervisor_o_del_usuario_dashboard(pool, conn):
+    conn.responder("fetch", "union all", [])
+    await tp.listar_actividad(10)
+    (_, sql, _) = conn.sql_ejecutado("union all")[0]
+    assert "left join usuarios_dashboard ud on ud.id = t.solucionado_por_usuario" in sql
+    assert "coalesce(s.nombre, ud.nombre)" in sql

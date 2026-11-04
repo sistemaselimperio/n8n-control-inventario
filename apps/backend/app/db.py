@@ -651,6 +651,11 @@ alter table usuarios_dashboard drop constraint if exists usuarios_dashboard_area
 alter table usuarios_dashboard add constraint usuarios_dashboard_area_check
     check (area in ('todo', 'bodega', 'traslados'));
 
+-- Autor de la solucion de una novedad cuando la carga un usuario del dashboard
+-- (ver resolver_novedad en app/services/traslados_puntos.py). `solucionado_por`
+-- (supervisores de la app movil) queda para las novedades historicas.
+alter table traslados_puntos add column if not exists solucionado_por_usuario uuid references usuarios_dashboard(id);
+
 -- Realtime de Supabase: sin esto el dashboard no recibe push de cambios,
 -- solo podria hacer polling. Falla silenciosamente (DO block) si ya estaban
 -- agregadas o si la publicacion no existe (p.ej. Postgres self-hosted sin

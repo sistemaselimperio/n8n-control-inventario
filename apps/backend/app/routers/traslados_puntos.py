@@ -14,15 +14,13 @@ from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from app.db import get_pool
 from app.models.empleado import PinNuevo
 from app.models.punto import PinLoginPunto, PuntoActualizar, PuntoCrear, UsuarioPuntoActualizar, UsuarioPuntoCrear
-from app.models.supervisor import PinLoginSupervisor, SupervisorActualizar, SupervisorCrear
 from app.models.talonario import HojaAnular, TalonarioConfigurar
 from app.models.traslado_punto import (
-    AsignarSyscafe,
     AsignarSyscafeDashboard,
     ExtraerTalonario,
     LlegadaDirectaCrear,
     RecepcionTraslado,
-    SolucionNovedad,
+    SolucionNovedadDashboard,
     TrasladoPuntoCrear,
     normalizar_numero_syscafe,
 )
@@ -61,7 +59,6 @@ from app.services.traslados_puntos import (
     registrar_recepcion,
     resolver_novedad,
     subir_reporte_syscafe,
-    validar_supervisor_activo,
 )
 from app.services.storage_evidencia import StorageNoDisponible
 from app.services.vision import ExtraccionFallida
@@ -69,7 +66,6 @@ from app.services.usuarios import (
     DatoInvalido,
     RegistroNoEncontrado,
     actualizar_fila,
-    crear_con_pin,
     resetear_pin,
 )
 
@@ -244,94 +240,16 @@ async def login_pin_punto(payload: PinLoginPunto) -> dict:
     raise HTTPException(status_code=401, detail="PIN incorrecto")
 
 
-@router.get("/supervisores")
-async def listar_supervisores(
-    incluir_inactivos: bool = False,
-    authorization: str | None = Header(default=None),
-    x_admin_token: str | None = Header(default=None),
-) -> list[dict]:
-    """Publico solo con supervisores activos (lo usa el login movil); con
-    incluir_inactivos=true exige sesion admin (o X-Admin-Token legacy) y agrega el estado."""
-    pool = await get_pool()
-    if incluir_inactivos:
-        await autorizar_admin(authorization, x_admin_token)
-        rows = await pool.fetch("select id, nombre, estado from supervisores order by estado, nombre")
-        return [{"id": str(r["id"]), "nombre": r["nombre"], "estado": r["estado"]} for r in rows]
-    rows = await pool.fetch("select id, nombre from supervisores where estado = 'activo' order by nombre")
-    return [{"id": str(r["id"]), "nombre": r["nombre"]} for r in rows]
-
-
-@router.post("/supervisores", status_code=201, dependencies=[Depends(requiere_admin)])
-async def crear_supervisor(payload: SupervisorCrear) -> dict:
-    """Alta de un supervisor con PIN (equivale a scripts/crear_supervisor.py,
-    pero sin la rama de "si ya existe, cambiale el PIN": para eso esta el
-    reset de PIN)."""
-    try:
-        fila = await crear_con_pin("supervisores", {"nombre": payload.nombre}, payload.pin)
-    except DatoInvalido as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"id": fila["id"], "nombre": fila["nombre"], "estado": fila["estado"]}
-
-
-@router.post("/supervisores/auth/pin")
-async def login_pin_supervisor(payload: PinLoginSupervisor) -> dict:
-    """Mismo patron que POST /puntos/auth/pin -- el supervisor ya se eligio
-    en el paso anterior del login movil (hoy solo Erika), el PIN solo
-    confirma esa identidad."""
-    pool = await get_pool()
-    candidato = await pool.fetchrow(
-        "select * from supervisores where id = $1::uuid and estado = 'activo' and pin_hash is not null",
-        payload.supervisor_id,
-    )
-    if candidato and verificar_pin(payload.pin, candidato["pin_salt"], candidato["pin_hash"]):
-        return {"id": str(candidato["id"]), "nombre": candidato["nombre"]}
-    raise HTTPException(status_code=401, detail="PIN incorrecto")
-
-
-# OJO: estas rutas con {supervisor_id} tienen que declararse DESPUES de
-# POST /supervisores/auth/pin -- FastAPI resuelve por orden de registro y,
-# si quedaran antes, "auth" caeria en el path param (UUID) y daria 422.
-@router.patch("/supervisores/{supervisor_id}", dependencies=[Depends(requiere_admin)])
-async def actualizar_supervisor(supervisor_id: UUID, payload: SupervisorActualizar) -> dict:
-    try:
-        return await actualizar_fila("supervisores", str(supervisor_id), payload.model_dump(exclude_none=True))
-    except RegistroNoEncontrado as exc:
-        raise HTTPException(status_code=404, detail="Supervisor no encontrado") from exc
-    except DatoInvalido as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@router.delete("/supervisores/{supervisor_id}", dependencies=[Depends(requiere_admin)])
-async def eliminar_supervisor(supervisor_id: UUID) -> dict:
-    """Borra el supervisor solo si nunca se uso; con historial responde 409 (se
-    desactiva en su lugar). Ver app/services/borrado_admin.py."""
-    try:
-        await borrado_admin.eliminar_supervisor(str(supervisor_id))
-    except RegistroNoEncontrado as exc:
-        raise HTTPException(status_code=404, detail="Supervisor no encontrado") from exc
-    except borrado_admin.TieneHistorial as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return {"ok": True}
-
-
-@router.post("/supervisores/{supervisor_id}/pin", dependencies=[Depends(requiere_admin)])
-async def resetear_pin_supervisor(supervisor_id: UUID, payload: PinNuevo) -> dict:
-    try:
-        await resetear_pin("supervisores", str(supervisor_id), payload.pin)
-    except RegistroNoEncontrado as exc:
-        raise HTTPException(status_code=404, detail="Supervisor no encontrado") from exc
-    return {"ok": True}
-
-
 _SELECT_TRASLADOS = """
     select t.*, po.nombre as punto_origen_nombre, pd.nombre as punto_destino_nombre,
-        s.nombre as solucionado_por_nombre, uc.nombre as creado_por_nombre,
+        coalesce(s.nombre, ud.nombre) as solucionado_por_nombre, uc.nombre as creado_por_nombre,
         ur.nombre as recibido_por_nombre,
         (select count(*) from traslado_punto_items ti where ti.traslado_id = t.id) as cantidad_items
     from traslados_puntos t
     left join puntos po on po.id = t.punto_origen_id
     left join puntos pd on pd.id = t.punto_destino_id
     left join supervisores s on s.id = t.solucionado_por
+    left join usuarios_dashboard ud on ud.id = t.solucionado_por_usuario
     left join usuarios_punto uc on uc.id = t.creado_por
     left join usuarios_punto ur on ur.id = t.recibido_por
 """
@@ -344,6 +262,7 @@ _CAMPOS_UUID_TRASLADO = (
     "talonario_id",
     "recibido_por",
     "solucionado_por",
+    "solucionado_por_usuario",
 )
 
 
@@ -481,7 +400,7 @@ async def listar_traslados(
 
 @router.get("/traslados-puntos/novedades")
 async def listar_novedades(estado: str = "pendiente") -> list[dict]:
-    """Bandeja de Supervision: traslados con novedad -- pendientes (el que
+    """Bandeja del dashboard: traslados con novedad -- pendientes (el que
     lleva mas tiempo esperando, primero) o resueltas (la mas reciente,
     primero). OJO: esta ruta tiene que declararse ANTES que
     GET /traslados-puntos/{traslado_id} en este archivo -- FastAPI resuelve
@@ -499,7 +418,7 @@ async def listar_novedades(estado: str = "pendiente") -> list[dict]:
 
 @router.get("/traslados-puntos/buscar-consecutivo")
 async def buscar_consecutivo_traslado(q: str = "") -> list[dict]:
-    """Busqueda de Supervision por consecutivo (ej. "NPT-1234", ver
+    """Busqueda por consecutivo de la solucion (ej. "NPT-1234", ver
     resolver_novedad en app/services/traslados_puntos.py). OJO: mismo motivo
     que /novedades arriba -- esta ruta tiene que declararse ANTES que
     GET /traslados-puntos/{traslado_id} en este archivo, o el path param se
@@ -524,7 +443,7 @@ async def listar_syscafe(
     desde: date | None = None,
     hasta: date | None = None,
 ) -> list[dict]:
-    """Lista de Supervision para registrar el numero Syscafe: traslados (tipo
+    """Lista para registrar el numero Syscafe: traslados (tipo
     "traslado") y hojas anuladas (tipo "anulada"), pendientes primero. OJO: mismo
     motivo que /novedades -- tiene que declararse ANTES que
     GET /traslados-puntos/{traslado_id}. `desde`/`hasta` (YYYY-MM-DD, inclusivos)
@@ -576,10 +495,18 @@ async def recibir_traslado(traslado_id: UUID, payload: RecepcionTraslado) -> dic
     return _serializar_traslado(resultado, items)
 
 
-@router.post("/traslados-puntos/{traslado_id}/solucion")
-async def resolver_novedad_endpoint(traslado_id: UUID, payload: SolucionNovedad) -> dict:
+@router.post("/traslados-puntos/{traslado_id}/solucion/dashboard")
+async def resolver_novedad_dashboard(
+    traslado_id: UUID,
+    payload: SolucionNovedadDashboard,
+    actor: ActorDashboard = Depends(requiere_supervisor_area("todo", "traslados")),
+) -> dict:
+    """Dashboard: carga la solucion de una novedad pendiente. Sesion
+    admin/supervisor con area todo o traslados (o token legacy, que queda sin
+    autor en la base); `consulta` y bodega quedan fuera."""
+    usuario_id = actor.usuario["id"] if actor.usuario else None
     try:
-        resultado = await resolver_novedad(str(traslado_id), payload)
+        resultado = await resolver_novedad(str(traslado_id), payload, usuario_id=usuario_id, actor_log=actor.actor)
     except NovedadNoEncontrada as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except NovedadYaResuelta as exc:
@@ -588,11 +515,9 @@ async def resolver_novedad_endpoint(traslado_id: UUID, payload: SolucionNovedad)
         # invalido.
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ConsecutivoDuplicado as exc:
-        # 409 tambien, pero con un detail distinto del de NovedadYaResuelta
-        # de arriba -- el movil necesita distinguir "alguien mas ya resolvio
-        # esta novedad" (recargar y mostrar resuelta) de "el consecutivo que
-        # tipeaste ya lo uso otra novedad" (quedarse en el formulario, ver
-        # esErrorConsecutivoDuplicado en apps/mobile/errorMessages.ts).
+        # 409 tambien, pero con un detail distinto del de NovedadYaResuelta:
+        # el dashboard distingue "alguien mas ya resolvio esta novedad" de
+        # "el consecutivo que tipeaste ya lo uso otra novedad".
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except NovedadInvalida as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -613,16 +538,6 @@ async def _asignar_syscafe(traslado_id: UUID, valor: str | None, por: str | None
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     items = resultado.pop("items")
     return _serializar_traslado(resultado, items)
-
-
-@router.patch("/traslados-puntos/{traslado_id}/syscafe")
-async def asignar_syscafe_movil(traslado_id: UUID, payload: AsignarSyscafe) -> dict:
-    """Movil (Supervision): guarda o borra (null/vacio) el numero Syscafe."""
-    try:
-        nombre = await validar_supervisor_activo(payload.supervisor_id)
-    except TrasladoInvalido as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return await _asignar_syscafe(traslado_id, payload.numero_syscafe, nombre)
 
 
 @router.patch("/traslados-puntos/{traslado_id}/syscafe/dashboard")

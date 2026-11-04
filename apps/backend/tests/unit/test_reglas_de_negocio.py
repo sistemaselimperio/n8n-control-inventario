@@ -13,7 +13,7 @@ from app.models.traslado_punto import (
     ItemTrasladoCrear,
     LlegadaDirectaCrear,
     RecepcionTraslado,
-    SolucionNovedad,
+    SolucionNovedadDashboard,
     TrasladoPuntoCrear,
     normalizar_numero_syscafe,
 )
@@ -193,14 +193,14 @@ def test_recepcion_no_acepta_cantidades_negativas_ni_vacia():
 
 
 def test_solucion_de_novedad():
-    ok = SolucionNovedad(supervisor_id="s", solucion="  se repuso  ", consecutivo_codigo=" npt ", consecutivo_numero="0012")
+    ok = SolucionNovedadDashboard(solucion="  se repuso  ", consecutivo_codigo=" npt ", consecutivo_numero="0012")
     assert (ok.solucion, ok.consecutivo_codigo, ok.consecutivo_numero) == ("se repuso", "NPT", "0012")
     for cambio in ({"solucion": "  "}, {"solucion": "x" * 2001}, {"consecutivo_codigo": "n-pt"},
                    {"consecutivo_codigo": ""}, {"consecutivo_numero": "12a"}, {"consecutivo_numero": "12345678901"}):
-        datos = dict(supervisor_id="s", solucion="ok", consecutivo_codigo="NPT", consecutivo_numero="1")
+        datos = dict(solucion="ok", consecutivo_codigo="NPT", consecutivo_numero="1")
         datos.update(cambio)
         with pytest.raises(ValidationError):
-            SolucionNovedad(**datos)
+            SolucionNovedadDashboard(**datos)
 
 
 @pytest.mark.parametrize(
