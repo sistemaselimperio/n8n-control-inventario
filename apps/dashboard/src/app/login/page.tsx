@@ -201,30 +201,32 @@ function FormularioLogin() {
           height={224}
           priority
           sizes="(min-width: 1024px) 52vw, 100vw"
-          className="h-auto w-full shrink-0 [mask-image:linear-gradient(to_bottom,transparent,black_14%,black_84%,transparent)]"
+          className="login-baja h-auto w-full shrink-0 [mask-image:linear-gradient(to_bottom,transparent,black_14%,black_84%,transparent)]"
         />
         <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-6 px-6 py-8 text-center lg:gap-8 lg:px-12">
           {/* Talonario del traslado y tirilla del despacho, uno junto al otro. */}
           <div className="hidden items-start justify-center gap-5 sm:flex [@media(max-height:720px)]:hidden">
-            <TalonarioTraslado />
-            <div className="mt-6">
+            <div className="login-talonario [--d:250ms]">
+              <TalonarioTraslado />
+            </div>
+            <div className="login-tirilla mt-6 [--d:400ms]">
               <TirillaDespacho />
             </div>
           </div>
 
           <div className="flex max-w-xl flex-col items-center gap-3">
-            <p className="text-3xl font-bold uppercase leading-[0.95] tracking-tight sm:text-4xl lg:text-5xl">
+            <p className="login-sube [--d:350ms] text-3xl font-bold uppercase leading-[0.95] tracking-tight sm:text-4xl lg:text-5xl">
               Despachos y
               <br />
               traslados <span className="text-oro">al día.</span>
             </p>
-            <p className="max-w-md text-base text-cielo-ink">
+            <p className="login-sube [--d:450ms] max-w-md text-base text-cielo-ink">
               Las guías que fotografían las sedes y los traslados entre puntos, con su número de talonario, en un solo lugar.
             </p>
           </div>
         </div>
 
-        <p className="hidden w-full shrink-0 items-center justify-center gap-5 bg-campo px-6 py-3.5 text-sm font-bold uppercase tracking-wide text-ok-on lg:flex">
+        <p className="login-franja [--d:700ms] hidden w-full shrink-0 items-center justify-center gap-5 bg-campo px-6 py-3.5 text-sm font-bold uppercase tracking-wide text-ok-on lg:flex">
           <span>Entregas por guía</span>
           <span aria-hidden className="h-1 w-8 rounded-full bg-ok-on" />
           <span>Traslados entre puntos</span>
@@ -234,7 +236,7 @@ function FormularioLogin() {
       </section>
 
       <div className="flex min-h-0 flex-col items-center justify-center gap-6 overflow-y-auto bg-page px-5 py-10 sm:px-10">
-        <div className="w-full max-w-md rounded-xl border-4 border-ink bg-surface p-6 shadow-[10px_10px_0_0_var(--color-campo)] sm:p-9">
+        <div className="login-tarjeta [--d:150ms] w-full max-w-md rounded-xl border-4 border-ink bg-surface p-6 shadow-[10px_10px_0_0_var(--color-campo)] sm:p-9">
           <h1 className="text-3xl font-bold uppercase leading-tight tracking-tight text-ink">Iniciar sesión</h1>
           <p className="mt-2 text-base text-soft">Ingresa con el usuario y la contraseña que se te asignó.</p>
 
@@ -309,7 +311,7 @@ function FormularioLogin() {
           </form>
         </div>
 
-        <div className="flex max-w-md flex-col items-center gap-1 text-center text-sm text-muted">
+        <div className="login-sube [--d:450ms] flex max-w-md flex-col items-center gap-1 text-center text-sm text-muted">
           <p className="flex items-center gap-2">
             <IconoCandado />
             Solo personal autorizado.

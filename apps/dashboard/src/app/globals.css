@@ -154,3 +154,90 @@ select {
   }
 }
 
+
+/* Entrada del login (una sola vez al cargar). Cada pieza lee su retraso de
+   --d (se fija con [--d:XXXms] en el JSX). Solo transform, opacity y
+   clip-path; con movimiento reducido no hay animacion y todo queda visible. */
+@media (prefers-reduced-motion: no-preference) {
+  .login-baja,
+  .login-sube,
+  .login-talonario,
+  .login-tirilla,
+  .login-franja,
+  .login-tarjeta {
+    animation-duration: 600ms;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    animation-fill-mode: both;
+    animation-delay: var(--d, 0ms);
+  }
+  .login-baja {
+    animation-name: login-baja;
+  }
+  .login-sube {
+    animation-name: login-sube;
+  }
+  .login-talonario {
+    animation-name: login-talonario;
+    animation-duration: 750ms;
+  }
+  /* La tirilla entra igual que el talonario, pero desde la derecha. */
+  .login-tirilla {
+    animation-name: login-tirilla;
+    animation-duration: 750ms;
+  }
+  .login-franja {
+    animation-name: login-franja;
+  }
+  /* La tarjeta sube y su sombra verde se "estampa" al final. */
+  .login-tarjeta {
+    animation-name: login-tarjeta;
+    animation-duration: 700ms;
+  }
+}
+
+@keyframes login-baja {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes login-sube {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+
+@keyframes login-talonario {
+  from {
+    opacity: 0;
+    transform: translate(-48px, 24px) rotate(-8deg);
+  }
+}
+
+@keyframes login-tirilla {
+  from {
+    opacity: 0;
+    transform: translate(48px, 24px) rotate(8deg);
+  }
+}
+
+@keyframes login-franja {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes login-tarjeta {
+  0% {
+    opacity: 0;
+    transform: translateY(32px);
+    box-shadow: 0 0 0 0 var(--color-campo);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(0);
+    box-shadow: 0 0 0 0 var(--color-campo);
+  }
+}
