@@ -1,18 +1,21 @@
 "use client";
 
 // Piezas de presentacion compartidas entre las pantallas del dashboard --
-// tema claro "papel de guía" (tokens definidos en globals.css: surface, line,
-// muted, brand-gold, ok, etc.). El dorado es solo relleno (accion primaria y
-// señales de atencion); el texto con sentido dorado usa gold-fg. Tipografia Archivo: .cifra para numeros grandes
-// y .titular para el titulo de pagina. Radios: contenedores rounded-lg,
-// controles rounded-md, pildoras rounded-full. Sin sombras. Sin logica de
-// negocio: solo reciben datos ya resueltos por cada pagina.
+// tema claro "verde salvia" (tokens definidos en globals.css: page, surface,
+// line, muted, ok, brand-gold, etc.). El verde de marca (ok) es la accion
+// primaria y la seleccion; el ambar (brand-gold / warn) marca lo pendiente y el
+// texto con sentido ambar usa gold-fg. Tipografia IBM Plex Sans; .cifra (Plex
+// Mono tabular) para identificadores y cifras, .titular para el titulo de
+// pagina (22px). Tarjetas rounded-lg con borde de 1px, controles rounded-md,
+// pildoras rounded-full. Sin sombras ni degradados. Sin logica de negocio: solo
+// reciben datos ya resueltos por cada pagina.
 
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-// Indicador KPI -- celda con rotulo en minusculas, cifra grande condensada
-// (.cifra) y detalle, sin barra de color. Mismas props que antes; `acento` se
-// acepta por compatibilidad pero ya no se pinta (el color no es la unica pista).
+// Indicador KPI -- tarjeta compacta sin iconos: rotulo en minusculas de 12px,
+// cifra de 26px (.cifra) y detalle de una linea. Mismas props que antes;
+// `acento` se acepta por compatibilidad pero ya no se pinta (el color no es la
+// unica pista).
 export function Indicador({
   etiqueta,
   valor,
@@ -33,20 +36,20 @@ export function Indicador({
 }) {
   return (
     <div
-      className={`flex flex-col gap-1.5 bg-surface p-4 ${
+      className={`flex flex-col gap-1 bg-surface px-4 py-3 ${
         plano ? "" : "rounded-lg border border-line transition-colors duration-150 hover:border-line-strong"
       }`}
     >
-      <span className="text-sm font-medium text-muted">{etiqueta}</span>
+      <span className="text-xs font-medium text-muted">{etiqueta}</span>
       {cargando ? (
-        <div className="flex flex-col gap-2 pt-1">
-          <div className="h-7 w-24 animate-pulse rounded bg-surface-2" />
+        <div className="flex flex-col gap-2 pt-0.5">
+          <div className="h-[26px] w-24 animate-pulse rounded bg-surface-2" />
           <div className="h-3 w-40 animate-pulse rounded bg-surface-2" />
         </div>
       ) : (
         <>
           <p className="flex items-baseline gap-1.5">
-            <span className="cifra text-[44px] text-ink">{valor}</span>
+            <span className="cifra text-[26px] text-ink">{valor}</span>
             {unidad ? <span className="text-xs text-muted">{unidad}</span> : null}
           </p>
           <p className="truncate text-xs text-muted" title={detalle}>
@@ -165,8 +168,8 @@ export function Segmentado<T extends string>({
             onClick={() => onCambiar(opcion.valor)}
             aria-pressed={activa}
             disabled={opcion.deshabilitada}
-            className={`min-h-9 rounded px-3 text-sm font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
-              activa ? "bg-brand-blue text-white" : "text-soft hover:bg-surface hover:text-ink"
+            className={`min-h-10 rounded px-3 text-sm font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
+              activa ? "bg-ok text-ok-on" : "text-soft hover:bg-surface hover:text-ink"
             }`}
           >
             {opcion.etiqueta}
@@ -189,7 +192,7 @@ export function claseBoton(variante: VarianteBoton = "secundario", extra = ""): 
   const base =
     "inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50";
   const variantes: Record<VarianteBoton, string> = {
-    primario: "bg-brand-gold text-brand-ink hover:bg-gold-hover font-semibold",
+    primario: "bg-ok text-ok-on hover:bg-ok-hover font-semibold",
     secundario: "border border-line-strong bg-surface-2 text-ink hover:bg-line",
     fantasma: "text-muted hover:bg-surface-2 hover:text-ink",
     peligro: "bg-danger-solid text-white font-semibold hover:brightness-90",
@@ -236,9 +239,9 @@ export function Pildora({
   );
 }
 
-// Encabezado de pagina: sobretitulo (texto chico en minusculas, sin dorado) +
-// titulo (.titular a 28px) + descripcion, con una zona de acciones opcional a
-// la derecha.
+// Encabezado de pagina: titulo (.titular a 22px) + subtitulo corto de una o
+// dos lineas, con una zona de acciones opcional a la derecha. `sobretitulo` se
+// conserva por compatibilidad (texto chico y apagado sobre el titulo).
 export function EncabezadoPagina({
   sobretitulo,
   titulo,
@@ -251,18 +254,78 @@ export function EncabezadoPagina({
   acciones?: ReactNode;
 }) {
   return (
-    <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line pb-5">
-      <div className="flex min-w-0 max-w-2xl flex-col gap-1">
-        {sobretitulo ? (
-          <p className="text-sm text-muted">{sobretitulo}</p>
-        ) : null}
-        <h1 className="titular text-[28px] leading-tight text-ink">{titulo}</h1>
+    <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+      <div className="flex min-w-0 max-w-3xl flex-col gap-1">
+        {sobretitulo ? <p className="text-sm text-muted">{sobretitulo}</p> : null}
+        <h1 className="titular text-[22px] leading-tight text-ink">{titulo}</h1>
         {descripcion ? <p className="text-sm leading-relaxed text-muted">{descripcion}</p> : null}
       </div>
       {acciones ? <div className="flex flex-wrap items-center gap-2">{acciones}</div> : null}
     </header>
   );
 }
+
+// Clase comun de los campos de filtro (select, input, fecha): 44px de alto.
+export const CLASE_CAMPO =
+  "min-h-11 rounded-md border border-line-strong bg-surface px-3 text-sm text-ink placeholder:text-subtle";
+
+// Campo de filtro: rotulo de 12px sobre el control.
+export function CampoFiltro({
+  id,
+  etiqueta,
+  children,
+  className = "",
+}: {
+  id: string;
+  etiqueta: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`flex flex-col gap-1 ${className}`}>
+      <label htmlFor={id} className="text-xs font-medium text-muted">
+        {etiqueta}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+// Tarjeta de filtros: agrupa los controles de una pantalla en una sola
+// superficie, encima del contenido. `resumen` (conteo de filas, por ejemplo)
+// va alineado a la derecha.
+export function TarjetaFiltros({
+  etiqueta,
+  resumen,
+  children,
+  className = "",
+}: {
+  etiqueta: string;
+  resumen?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section aria-label={etiqueta} className={`rounded-lg border border-line bg-surface p-4 ${className}`}>
+      <div className="flex flex-wrap items-end gap-3">
+        {children}
+        {resumen ? (
+          <p className="ml-auto text-sm tabular-nums text-muted" aria-live="polite">
+            {resumen}
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+// Clases de tabla: encabezado de 12px apagado, filas con regla fina, zebra
+// suave en filas pares y resalte al pasar el cursor (sobre fondo claro).
+export const CLASE_TABLA = "w-full text-left text-sm";
+export const CLASE_THEAD = "border-b border-line text-xs text-muted";
+export const CLASE_TBODY = "divide-y divide-line [&>tr:nth-child(even)]:bg-page/60";
+export const CLASE_FILA_CLICABLE =
+  "min-h-11 cursor-pointer transition-colors duration-150 hover:bg-surface-2! focus-visible:bg-surface-2!";
 
 // ---------------------------------------------------------------------------
 // Iconos en linea (estilo Lucide: viewBox 24, trazo currentColor). Sin

@@ -147,6 +147,47 @@ describe("lecturas (getJson)", () => {
     });
   });
 
+  it("fetchTalonarioPunto pide GET /puntos/{id}/talonario", async () => {
+    const fetchMock = mockFetch(respuestaJson({ talonarios: [], talonario: null }));
+    const r = await api.fetchTalonarioPunto("p 1");
+    expect(ultimaLlamada(fetchMock).url).toBe(`${BASE}/puntos/p%201/talonario`);
+    expect(r.talonarios).toEqual([]);
+  });
+
+  it("listarTrasladosRecibidos pide los del destino y los normaliza a fila de Syscafe", async () => {
+    const fetchMock = mockFetch(
+      respuestaJson([
+        {
+          id: "t9",
+          consecutivo: 9,
+          tipo: "directo",
+          numero_talonario: "A 9",
+          talonario_id: "k1",
+          numero_syscafe: "NBR-9",
+          punto_origen_id: null,
+          punto_origen_nombre: null,
+          punto_destino_id: "p2",
+          punto_destino_nombre: "Norte",
+          estado: "recibido",
+          fecha: "2026-10-13",
+          created_at: "2026-10-13T10:00:00Z",
+        },
+      ]),
+    );
+    const filas = await api.listarTrasladosRecibidos("p2");
+    expect(ultimaLlamada(fetchMock).url).toBe(`${BASE}/traslados-puntos?destino_id=p2`);
+    expect(filas).toEqual([
+      expect.objectContaining({
+        tipo: "traslado",
+        id: "t9",
+        tipo_traslado: "directo",
+        numero_syscafe: "NBR-9",
+        motivo: null,
+        anulado_por_nombre: null,
+      }),
+    ]);
+  });
+
   it("fetchRankingProductos arma la query y omite lo opcional", async () => {
     const fetchMock = mockFetch(respuestaJson({}));
     await api.fetchRankingProductos({ desde: "2026-10-01", hasta: "2026-10-31" });

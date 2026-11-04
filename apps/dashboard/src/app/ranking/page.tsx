@@ -9,12 +9,20 @@
 // (un color) por columna, valor escrito al lado de cada barra (el dato nunca
 // depende solo del color). Colores validados con el validador de la skill
 // dataviz sobre la superficie clara del panel: verde de marca (ok, 4.1:1 sobre
-// blanco) y azul cielo de marca (6.8:1); ambos >= 3:1 como elemento grafico.
+// blanco) y verde azulado (brand-sky, 4.6:1); ambos >= 3:1 como elemento grafico.
 
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { fetchRankingProductos, fetchSedes, type RankingProductoItem } from "@/lib/api";
-import { EncabezadoPagina, ErrorConReintento, Indicador, Segmentado } from "@/components/ui";
+import {
+  CampoFiltro,
+  CLASE_CAMPO,
+  EncabezadoPagina,
+  ErrorConReintento,
+  Indicador,
+  Segmentado,
+  TarjetaFiltros,
+} from "@/components/ui";
 
 const COLOR_MAS = "var(--color-ok)";
 const COLOR_MENOS = "var(--color-brand-sky)";
@@ -131,78 +139,64 @@ export default function RankingPage() {
   const menosMovido = menosVendidos[0];
 
   return (
-    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
+    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8">
       <EncabezadoPagina
         titulo="Ranking de productos"
-        descripcion="Mira qué productos salieron más y cuáles menos en el período que elijas, según lo confirmado en las entregas."
+        descripcion="Qué productos salieron más y cuáles menos en el período elegido, según lo confirmado en las entregas."
       />
 
-      {/* Filtros en una sola fila arriba de los datos. */}
-      <section aria-label="Filtros" className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <Segmentado
-            etiqueta="Período"
-            valor={periodo === "custom" ? null : periodo}
-            onCambiar={elegirPeriodo}
-            opciones={[
-              { valor: "hoy", etiqueta: "Hoy" },
-              { valor: "semana", etiqueta: "Últimos 7 días" },
-              { valor: "mes", etiqueta: "Últimos 30 días" },
-            ]}
+      {/* Filtros agrupados en una tarjeta, arriba de los datos. */}
+      <TarjetaFiltros
+        etiqueta="Filtros"
+        resumen={
+          <>
+            Mostrando <span className="font-medium text-soft">{textoRango}</span> en{" "}
+            <span className="font-medium text-soft">{nombreSede}</span>
+            {isLoading && ranking ? <span className="ml-2 text-subtle">actualizando…</span> : null}
+          </>
+        }
+      >
+        <Segmentado
+          etiqueta="Período"
+          valor={periodo === "custom" ? null : periodo}
+          onCambiar={elegirPeriodo}
+          opciones={[
+            { valor: "hoy", etiqueta: "Hoy" },
+            { valor: "semana", etiqueta: "Últimos 7 días" },
+            { valor: "mes", etiqueta: "Últimos 30 días" },
+          ]}
+        />
+        <CampoFiltro id="ranking-desde" etiqueta="Desde">
+          <input
+            id="ranking-desde"
+            type="date"
+            value={desde}
+            onChange={(e) => cambiarDesde(e.target.value)}
+            max={hasta || undefined}
+            className={CLASE_CAMPO}
           />
-
-          <div className="flex flex-col gap-1">
-            <label htmlFor="ranking-desde" className="text-xs font-medium text-muted">
-              Desde
-            </label>
-            <input
-              id="ranking-desde"
-              type="date"
-              value={desde}
-              onChange={(e) => cambiarDesde(e.target.value)}
-              max={hasta || undefined}
-              className="min-h-11 rounded-md border border-line-strong bg-surface px-2 text-sm text-ink"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="ranking-hasta" className="text-xs font-medium text-muted">
-              Hasta
-            </label>
-            <input
-              id="ranking-hasta"
-              type="date"
-              value={hasta}
-              onChange={(e) => cambiarHasta(e.target.value)}
-              min={desde || undefined}
-              className="min-h-11 rounded-md border border-line-strong bg-surface px-2 text-sm text-ink"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label htmlFor="ranking-sede" className="text-xs font-medium text-muted">
-              Sede
-            </label>
-            <select
-              id="ranking-sede"
-              value={sedeId}
-              onChange={(e) => setSedeId(e.target.value)}
-              className="min-h-11 rounded-md border border-line-strong bg-surface px-3 text-sm text-ink"
-            >
-              <option value="todas">Todas las sedes</option>
-              {(sedes ?? []).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <p className="text-sm text-muted" aria-live="polite">
-          Mostrando <span className="font-medium text-soft">{textoRango}</span> en{" "}
-          <span className="font-medium text-soft">{nombreSede}</span>
-          {isLoading && ranking ? <span className="ml-2 text-subtle">actualizando…</span> : null}
-        </p>
-      </section>
+        </CampoFiltro>
+        <CampoFiltro id="ranking-hasta" etiqueta="Hasta">
+          <input
+            id="ranking-hasta"
+            type="date"
+            value={hasta}
+            onChange={(e) => cambiarHasta(e.target.value)}
+            min={desde || undefined}
+            className={CLASE_CAMPO}
+          />
+        </CampoFiltro>
+        <CampoFiltro id="ranking-sede" etiqueta="Sede">
+          <select id="ranking-sede" value={sedeId} onChange={(e) => setSedeId(e.target.value)} className={CLASE_CAMPO}>
+            <option value="todas">Todas las sedes</option>
+            {(sedes ?? []).map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.nombre}
+              </option>
+            ))}
+          </select>
+        </CampoFiltro>
+      </TarjetaFiltros>
 
       {error ? <ErrorConReintento mensaje="No se pudo cargar el ranking. Revisa la conexión con el servidor." onReintentar={() => mutate()} /> : null}
 

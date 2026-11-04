@@ -10,7 +10,19 @@ import { useState } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { actualizarProducto, crearProducto, eliminarProducto, fetchProductos, type Producto } from "@/lib/api";
-import { claseBoton, EncabezadoPagina, ErrorConReintento, EstadoVacio } from "@/components/ui";
+import {
+  CampoFiltro,
+  CLASE_CAMPO,
+  CLASE_TABLA,
+  CLASE_TBODY,
+  CLASE_THEAD,
+  claseBoton,
+  EncabezadoPagina,
+  ErrorConReintento,
+  EstadoVacio,
+  Panel,
+  TarjetaFiltros,
+} from "@/components/ui";
 import { AccionEliminar } from "@/components/creador/compartido";
 import { useSesion } from "@/lib/SesionProvider";
 
@@ -87,71 +99,59 @@ export default function ProductosPage() {
       }`;
 
   return (
-    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
+    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8">
       <EncabezadoPagina
         titulo="Catálogo de productos"
-        descripcion="Busca un producto por código o nombre. El catálogo se completa solo con las facturas procesadas y, si tu rol lo permite, puedes corregir el código o el nombre a mano."
+        descripcion="Busca un producto por código o nombre. El catálogo se completa solo con las facturas procesadas; si tu rol lo permite, puedes corregirlo a mano."
       />
 
-      {/* Buscador y alta manual, en una sola banda con divisiones. */}
-      <section className="overflow-hidden rounded-lg border border-line bg-surface">
-        <div className="flex flex-col gap-1.5 p-4">
-          <label htmlFor="productos-buscar" className="text-sm font-medium text-soft">
-            Buscar por código o nombre
-          </label>
+      {/* Buscador en una tarjeta de filtros; el alta manual, en su propio panel. */}
+      <TarjetaFiltros etiqueta="Buscar en el catálogo" resumen={contador}>
+        <CampoFiltro id="productos-buscar" etiqueta="Buscar por código o nombre" className="w-full sm:w-96">
           <input
             id="productos-buscar"
             type="search"
             value={buscar}
             onChange={(e) => setBuscar(e.target.value)}
             placeholder="Ej. 75936 o sal blanca"
-            className="min-h-11 rounded-md border border-line-strong bg-surface px-3 text-sm text-ink"
+            className={CLASE_CAMPO}
           />
-          <p className="text-xs text-muted" aria-live="polite">
-            {contador}
-          </p>
-        </div>
-        {puedeEditar ? (
-          <div className="flex flex-col gap-2 border-t border-line p-4">
-            <h2 className="text-sm font-semibold text-ink">Agregar a mano</h2>
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="producto-codigo-nuevo" className="text-sm font-medium text-soft">
-                  Código
-                </label>
-                <input
-                  id="producto-codigo-nuevo"
-                  value={codigoNuevo}
-                  onChange={(e) => setCodigoNuevo(e.target.value)}
-                  className="min-h-11 w-36 rounded-md border border-line-strong bg-surface px-3 text-sm text-ink"
-                />
-              </div>
-              <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
-                <label htmlFor="producto-nombre-nuevo" className="text-sm font-medium text-soft">
-                  Nombre
-                </label>
-                <input
-                  id="producto-nombre-nuevo"
-                  value={nombreNuevo}
-                  onChange={(e) => setNombreNuevo(e.target.value)}
-                  className="min-h-11 rounded-md border border-line-strong bg-surface px-3 text-sm text-ink"
-                />
-              </div>
-              <button
-                onClick={agregar}
-                disabled={agregando || !codigoNuevo.trim() || !nombreNuevo.trim()}
-                className={claseBoton("primario", "min-h-11")}
-              >
-                {agregando ? "Agregando…" : "Agregar"}
-              </button>
-            </div>
+        </CampoFiltro>
+      </TarjetaFiltros>
+
+      {puedeEditar ? (
+        <Panel titulo="Agregar a mano" subtitulo="Para productos que la extracción automática no resolvió.">
+          <div className="flex flex-wrap items-end gap-3">
+            <CampoFiltro id="producto-codigo-nuevo" etiqueta="Código">
+              <input
+                id="producto-codigo-nuevo"
+                value={codigoNuevo}
+                onChange={(e) => setCodigoNuevo(e.target.value)}
+                className={`${CLASE_CAMPO} w-36`}
+              />
+            </CampoFiltro>
+            <CampoFiltro id="producto-nombre-nuevo" etiqueta="Nombre" className="min-w-[200px] flex-1">
+              <input
+                id="producto-nombre-nuevo"
+                value={nombreNuevo}
+                onChange={(e) => setNombreNuevo(e.target.value)}
+                className={CLASE_CAMPO}
+              />
+            </CampoFiltro>
+            <button
+              onClick={agregar}
+              disabled={agregando || !codigoNuevo.trim() || !nombreNuevo.trim()}
+              className={claseBoton("primario", "min-h-11")}
+            >
+              {agregando ? "Agregando…" : "Agregar"}
+            </button>
           </div>
-        ) : null}
-      </section>
+        </Panel>
+      ) : null}
 
       {error ? <ErrorConReintento mensaje="No se pudo cargar el catálogo." onReintentar={() => recargar()} /> : null}
 
-      <section className="overflow-hidden rounded-lg border border-line bg-surface">
+      <Panel titulo="Productos" conRelleno={false}>
         {isLoading ? (
           <ul className="flex flex-col divide-y divide-line" aria-busy>
             {Array.from({ length: 6 }, (_, i) => (
@@ -171,9 +171,9 @@ export default function ProductosPage() {
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] text-left text-sm">
+            <table className={`${CLASE_TABLA} min-w-[480px]`}>
               <caption className="sr-only">Productos del catálogo</caption>
-              <thead className="border-b border-line text-xs text-muted">
+              <thead className={CLASE_THEAD}>
                 <tr>
                   <th scope="col" className="w-36 px-4 py-3 font-medium">
                     Código
@@ -188,9 +188,9 @@ export default function ProductosPage() {
                   ) : null}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-line">
+              <tbody className={CLASE_TBODY}>
                 {productos.map((producto) => (
-                  <tr key={producto.id} className="min-h-11 transition-colors duration-150 hover:bg-surface-2">
+                  <tr key={producto.id} className="min-h-11 transition-colors duration-150 hover:bg-surface-2!">
                     {editandoId === producto.id ? (
                       <>
                         <td className="px-4 py-2">
@@ -202,7 +202,7 @@ export default function ProductosPage() {
                               if (e.key === "Escape") setEditandoId(null);
                             }}
                             aria-label="Código"
-                            className="min-h-11 w-full rounded-md border border-line-strong bg-surface px-2 text-sm text-ink"
+                            className={`${CLASE_CAMPO} w-full`}
                           />
                         </td>
                         <td className="px-4 py-2">
@@ -215,14 +215,14 @@ export default function ProductosPage() {
                               if (e.key === "Escape") setEditandoId(null);
                             }}
                             aria-label="Nombre"
-                            className="min-h-11 w-full rounded-md border border-line-strong bg-surface px-2 text-sm text-ink"
+                            className={`${CLASE_CAMPO} w-full`}
                           />
                         </td>
                       </>
                     ) : (
                       <>
                         <td className="whitespace-nowrap px-4 py-2">
-                          <span className="cifra text-[16px] text-ink">{producto.codigo}</span>
+                          <span className="cifra text-[14px] text-ink">{producto.codigo}</span>
                         </td>
                         <td className="px-4 py-2 text-ink">{producto.nombre}</td>
                       </>
@@ -267,7 +267,7 @@ export default function ProductosPage() {
             </table>
           </div>
         )}
-      </section>
+      </Panel>
     </main>
   );
 }

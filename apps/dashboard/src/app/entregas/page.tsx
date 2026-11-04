@@ -22,7 +22,28 @@ import {
   type Entrega,
 } from "@/lib/api";
 import { useSesion } from "@/lib/SesionProvider";
-import { EncabezadoPagina, Icono, Pildora } from "@/components/ui";
+import {
+  ATAJOS_FECHA,
+  BotonLimpiarFiltros,
+  BuscadorBarra,
+  CamposRangoFecha,
+  MenuFiltro,
+  PestanasConteo,
+  rangoDeAtajo,
+  textoFecha,
+  type ModoFecha,
+} from "@/components/filtros";
+import {
+  CLASE_CAMPO,
+  CLASE_FILA_CLICABLE,
+  CLASE_TABLA,
+  CLASE_TBODY,
+  CLASE_THEAD,
+  claseBoton,
+  EncabezadoPagina,
+  Icono,
+  Pildora,
+} from "@/components/ui";
 import {
   API_URL_HINT,
   estadoVisual,
@@ -89,6 +110,8 @@ function EntregasContenido() {
   const [fechaDesde, setFechaDesde] = useState("");
   const [fechaHasta, setFechaHasta] = useState("");
   const [sedeFiltro, setSedeFiltro] = useState<string>("todas");
+  // Atajo de fecha elegido en el menu "Fecha"; "elegir" muestra Desde/Hasta.
+  const [modoFecha, setModoFecha] = useState<ModoFecha>("todas");
   const [limiteTabla, setLimiteTabla] = useState(150);
   const [busqueda, setBusqueda] = useState("");
 
@@ -101,11 +124,6 @@ function EntregasContenido() {
   };
   const cambiarFechaHasta = (valor: string) => {
     setFechaHasta(valor);
-    setLimiteTabla(150);
-  };
-  const limpiarFechas = () => {
-    setFechaDesde("");
-    setFechaHasta("");
     setLimiteTabla(150);
   };
   const cambiarSedeFiltro = (nuevaSede: string) => {
@@ -217,13 +235,46 @@ function EntregasContenido() {
     return entregasPorEstado?.filter((e) => esRemision(e.tipo) === (filtroFlujo === "remisiones"));
   }, [entregasPorEstado, filtroFlujo]);
 
-  const claseSegmento = (activo: boolean) =>
-    `min-h-8 rounded-md px-3 py-1.5 text-xs font-medium transition ${
-      activo ? "bg-brand-gold text-brand-ink" : "text-muted hover:bg-surface-2 hover:text-ink"
-    }`;
+  // Conteo de cada pestaña de estado, sobre lo cargado y con el flujo elegido.
+  const conteoEstados = useMemo(() => {
+    const lista = (entregasTabla ?? []).filter(
+      (e) => filtroFlujo === "todos" || TIPOS_REMISION.includes(e.tipo.toUpperCase()) === (filtroFlujo === "remisiones"),
+    );
+    return {
+      todas: lista.length,
+      revision: lista.filter((e) => e.estado === "pendiente_revision").length,
+      pendiente: lista.filter((e) => tienePendiente(e) && e.estado !== "pendiente_revision").length,
+      procesada: lista.filter((e) => e.estado === "procesada" && !tienePendiente(e)).length,
+    } satisfies Record<FiltroEstado, number>;
+  }, [entregasTabla, filtroFlujo]);
+
+  const elegirModoFecha = (m: ModoFecha) => {
+    setModoFecha(m);
+    const rango = rangoDeAtajo(m, new Date());
+    if (rango) {
+      setFechaDesde(rango[0]);
+      setFechaHasta(rango[1]);
+      setLimiteTabla(150);
+    }
+  };
+
+  const hayFiltros =
+    filtroEstado !== "todas" ||
+    filtroFlujo !== "todos" ||
+    Boolean(fechaDesde || fechaHasta || busqueda) ||
+    sedeFiltro !== "todas";
+  const limpiarFiltros = () => {
+    setModoFecha("todas");
+    setFechaDesde("");
+    setFechaHasta("");
+    setSedeFiltro("todas");
+    setBusqueda("");
+    setLimiteTabla(150);
+    if (filtroEstado !== "todas" || filtroFlujo !== "todos") router.replace(pathname, { scroll: false });
+  };
 
   return (
-    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
+    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8">
       <EncabezadoPagina
         titulo="Entregas"
         descripcion="Historial completo, ordenado por más reciente."
@@ -234,7 +285,7 @@ function EntregasContenido() {
               type="button"
               onClick={() => descargar("xlsx")}
               disabled={descargando !== null}
-              className="min-h-9 rounded-md border border-line-strong px-3 py-1.5 text-xs font-medium text-soft transition hover:bg-surface-2 disabled:cursor-wait disabled:opacity-60"
+              className={claseBoton("secundario", "disabled:cursor-wait")}
             >
               <Icono nombre="descarga" className="mr-1.5 inline h-4 w-4 align-text-bottom" />
               {descargando === "xlsx" ? "Descargando…" : "Reporte mensual (Excel)"}
@@ -243,7 +294,7 @@ function EntregasContenido() {
               type="button"
               onClick={() => descargar("csv")}
               disabled={descargando !== null}
-              className="min-h-9 rounded-md border border-line-strong px-3 py-1.5 text-xs font-medium text-soft transition hover:bg-surface-2 disabled:cursor-wait disabled:opacity-60"
+              className={claseBoton("secundario", "disabled:cursor-wait")}
             >
               {descargando === "csv" ? "Descargando…" : "Descargar CSV (Excel)"}
             </button>
@@ -272,117 +323,91 @@ function EntregasContenido() {
       </section>
 
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold text-ink">Historial</h2>
-        {/* Filtros: buscador arriba, controles segmentados abajo, resumen
-            "Mostrando" al pie. */}
-        <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-3 sm:p-4">
-          <input
-            value={busqueda}
-            onChange={(e) => cambiarBusqueda(e.target.value)}
-            placeholder="Buscar por tipo, número, sede, operador o producto..."
-            className="w-full rounded-md border border-line bg-page px-3 py-2 text-xs text-ink placeholder:text-subtle"
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Filtro por categoria, aparte del buscador -- se combina con AND
-                (ver entregasPorEstado/entregasFiltradas). */}
-            <div className="flex flex-wrap gap-1 rounded-lg border border-line bg-page p-1">
-              {(
-                [
-                  { valor: "todas", etiqueta: "Todas" },
-                  { valor: "revision", etiqueta: "En revisión" },
-                  { valor: "pendiente", etiqueta: "Sin terminar" },
-                  { valor: "procesada", etiqueta: "Procesadas" },
-                ] as const
-              ).map((opcion) => (
-                <button
-                  key={opcion.valor}
-                  onClick={() => setFiltroEstado(opcion.valor)}
-                  aria-pressed={filtroEstado === opcion.valor}
-                  className={claseSegmento(filtroEstado === opcion.valor)}
-                >
-                  {opcion.etiqueta}
-                </button>
-              ))}
-            </div>
-            {/* Filtro por flujo: despachos vs. remisiones (RM2/RM3/RSF). */}
-            <div className="flex flex-wrap gap-1 rounded-lg border border-line bg-page p-1">
-              {(
-                [
-                  { valor: "todos", etiqueta: "Todos" },
-                  { valor: "despachos", etiqueta: "Despachos" },
-                  { valor: "remisiones", etiqueta: "Remisiones" },
-                ] as const
-              ).map((opcion) => (
-                <button
-                  key={opcion.valor}
-                  onClick={() => setFiltroFlujo(opcion.valor)}
-                  aria-pressed={filtroFlujo === opcion.valor}
-                  className={claseSegmento(filtroFlujo === opcion.valor)}
-                >
-                  {opcion.etiqueta}
-                </button>
-              ))}
-            </div>
-            {/* Filtro por rango de fechas -- calendario libre (desde/hasta),
-                con "Todo" para volver a no filtrar (ver fechasCalendarioAISO).
-                Se combina con AND junto al resto de filtros de esta tabla. */}
-            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-line bg-page px-2 py-1">
-              <label className="flex flex-col items-start">
-                <span className="text-[10px] leading-none text-muted">Desde</span>
-                <input
-                  type="date"
-                  value={fechaDesde}
-                  onChange={(e) => cambiarFechaDesde(e.target.value)}
-                  max={fechaHasta || undefined}
-                  className="rounded bg-transparent px-1 py-1 text-xs text-ink"
-                />
-              </label>
-              <span className="px-1 text-xs text-subtle">–</span>
-              <label className="flex flex-col items-start">
-                <span className="text-[10px] leading-none text-muted">Hasta</span>
-                <input
-                  type="date"
-                  value={fechaHasta}
-                  onChange={(e) => cambiarFechaHasta(e.target.value)}
-                  min={fechaDesde || undefined}
-                  className="rounded bg-transparent px-1 py-1 text-xs text-ink"
-                />
-              </label>
-              <button
-                onClick={limpiarFechas}
-                aria-pressed={!fechaDesde && !fechaHasta}
-                className={`ml-1 ${claseSegmento(!fechaDesde && !fechaHasta)}`}
-              >
-                Todo
-              </button>
-            </div>
-            {/* Filtro por sede -- opt-in, no oculta que existen las demas
-                (default "todas"). */}
-            <select
-              value={sedeFiltro}
-              onChange={(e) => cambiarSedeFiltro(e.target.value)}
-              className="rounded-md border border-line bg-page px-3 py-2 text-xs text-ink"
-            >
-              <option value="todas">Todas las sedes</option>
-              {(sedes ?? []).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-          <p className="text-xs text-muted">
-            Mostrando{" "}
-            <span className="font-medium text-soft">{entregasFiltradas?.length ?? 0}</span>{" "}
-            {entregasFiltradas?.length === 1 ? "entrega" : "entregas"}
+      {/* Historial: titulo con total, estado como pestañas con conteo, una
+          barra compacta (buscador + filtros "Etiqueta: valor") y la tabla. */}
+      <section aria-labelledby="historial-titulo" className="rounded-lg border border-line bg-surface">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-3 sm:px-5">
+          <h2 id="historial-titulo" className="text-base font-semibold text-ink">
+            Historial
+          </h2>
+          <p className="text-sm tabular-nums text-muted" aria-live="polite">
+            {entregasFiltradas?.length ?? 0} {entregasFiltradas?.length === 1 ? "entrega" : "entregas"}
             {entregasTablaCargando ? <span className="ml-2 text-subtle">actualizando…</span> : null}
           </p>
         </div>
 
-        <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-          <table className="w-full min-w-[820px] text-left text-sm">
-            <thead className="border-b border-line text-xs text-muted">
+        <div className="mt-1">
+          <PestanasConteo
+            etiqueta="Estado"
+            valor={filtroEstado}
+            onCambio={setFiltroEstado}
+            sinConteo={entregasTablaCargando && !entregasTabla}
+            opciones={[
+              { valor: "todas" as const, texto: "Todas", conteo: conteoEstados.todas },
+              { valor: "revision" as const, texto: "En revisión", tono: "warn" as const, conteo: conteoEstados.revision },
+              { valor: "pendiente" as const, texto: "Sin terminar", tono: "info" as const, conteo: conteoEstados.pendiente },
+              { valor: "procesada" as const, texto: "Procesadas", tono: "ok" as const, conteo: conteoEstados.procesada },
+            ]}
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3 sm:px-5">
+          <BuscadorBarra
+            id="entregas-buscar"
+            etiqueta="Buscar entregas"
+            valor={busqueda}
+            onCambio={cambiarBusqueda}
+            placeholder="Buscar por tipo, número, sede, operador o producto"
+            claseCampo={CLASE_CAMPO}
+          />
+          <MenuFiltro
+            etiqueta="Flujo"
+            valorTexto={filtroFlujo === "despachos" ? "Despachos" : filtroFlujo === "remisiones" ? "Remisiones" : "Todos"}
+            activo={filtroFlujo !== "todos"}
+            valor={filtroFlujo}
+            onCambio={setFiltroFlujo}
+            opciones={[
+              { valor: "todos" as const, texto: "Todos" },
+              { valor: "despachos" as const, texto: "Despachos" },
+              { valor: "remisiones" as const, texto: "Remisiones" },
+            ]}
+          />
+          <MenuFiltro
+            etiqueta="Fecha"
+            valorTexto={textoFecha(modoFecha, fechaDesde, fechaHasta)}
+            activo={modoFecha !== "todas"}
+            valor={modoFecha}
+            onCambio={elegirModoFecha}
+            opciones={ATAJOS_FECHA.map((x) => ({ ...x, mantenerAbierto: x.valor === "elegir" }))}
+          >
+            {modoFecha === "elegir" ? (
+              <CamposRangoFecha
+                idBase="entregas"
+                desde={fechaDesde}
+                hasta={fechaHasta}
+                onDesde={cambiarFechaDesde}
+                onHasta={cambiarFechaHasta}
+                claseCampo={CLASE_CAMPO}
+              />
+            ) : null}
+          </MenuFiltro>
+          <MenuFiltro
+            etiqueta="Sede"
+            valorTexto={(sedes ?? []).find((x) => x.id === sedeFiltro)?.nombre ?? "Todas"}
+            activo={sedeFiltro !== "todas"}
+            valor={sedeFiltro}
+            onCambio={cambiarSedeFiltro}
+            opciones={[
+              { valor: "todas", texto: "Todas las sedes" },
+              ...(sedes ?? []).map((x) => ({ valor: x.id, texto: x.nombre })),
+            ]}
+          />
+          {hayFiltros ? <BotonLimpiarFiltros onClick={limpiarFiltros} /> : null}
+        </div>
+
+        <div className="overflow-x-auto rounded-b-lg">
+          <table className={`${CLASE_TABLA} min-w-[820px]`}>
+            <thead className={CLASE_THEAD}>
               <tr>
                 {ENCABEZADOS_TABLA.map((col) => (
                   <th key={col.texto} className={`px-4 py-3 font-medium ${col.derecha ? "text-right" : ""}`}>
@@ -391,7 +416,7 @@ function EntregasContenido() {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-line">
+            <tbody className={CLASE_TBODY}>
               {!entregasTablaCargando && entregasTabla?.length === 0 ? (
                 <tr>
                   <td colSpan={ENCABEZADOS_TABLA.length} className="px-4 py-6 text-center text-muted">
@@ -415,7 +440,7 @@ function EntregasContenido() {
                 return (
                   <Fragment key={e.id}>
                     <tr
-                      className="h-11 cursor-pointer transition-colors duration-150 hover:bg-surface-2"
+                      className={`h-11 ${CLASE_FILA_CLICABLE}`}
                       onClick={() =>
                         editable ? setEnRevision(enRevision === e.id ? null : e.id) : setEntregaDetalle(e)
                       }
@@ -485,12 +510,14 @@ function EntregasContenido() {
           </table>
         </div>
         {entregasTabla?.length === limiteTabla ? (
+          <div className="flex justify-center border-t border-line p-3">
           <button
             onClick={() => setLimiteTabla((l) => l + 150)}
-            className="self-center rounded-md border border-line-strong px-3 py-1.5 text-xs font-medium text-soft transition hover:bg-surface-2"
+            className={claseBoton("secundario")}
           >
             Cargar más
           </button>
+          </div>
         ) : null}
       </section>
 

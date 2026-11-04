@@ -2,14 +2,14 @@
 
 // Reporte de traslado generado por Syscafe. Se ve para todos los que abren el
 // detalle; solo quien puede asignar Syscafe sube el archivo, una unica vez:
-// elegir -> vista previa -> confirmar (no se puede reemplazar ni borrar).
+// elegir (clic, arrastrar o pegar con Ctrl+V) -> vista previa -> confirmar.
+// No se puede reemplazar ni borrar.
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 import { subirReporteSyscafeDashboard } from "@/lib/api";
 import { claseBoton, Icono } from "@/components/ui";
 import { fechaHora } from "./compartido";
-import { Dato } from "./ModalBase";
 
 export const MAX_BYTES_REPORTE = 5 * 1024 * 1024;
 const TIPOS_IMAGEN = ["image/jpeg", "image/png", "image/webp"];
@@ -30,6 +30,8 @@ export interface CamposReporteSyscafe {
   reporte_syscafe_por?: string | null;
 }
 
+const claseMiniatura = "h-32 w-auto max-w-full rounded-md border border-line bg-white object-contain";
+
 export function ReporteSyscafe({
   traslado,
   puedeSubir,
@@ -42,6 +44,7 @@ export function ReporteSyscafe({
   const [elegido, setElegido] = useState<File | null>(null);
   const [previa, setPrevia] = useState<string | null>(null);
   const [subiendo, setSubiendo] = useState(false);
+  const [encima, setEncima] = useState(false);
   const entrada = useRef<HTMLInputElement>(null);
 
   // La URL de la vista previa se crea al elegir el archivo; aqui solo se libera.
@@ -50,7 +53,7 @@ export function ReporteSyscafe({
     return () => URL.revokeObjectURL(previa);
   }, [previa]);
 
-  const alElegir = (archivo: File | undefined) => {
+  const alElegir = useCallback((archivo: File | undefined | null) => {
     if (!archivo) return;
     const error = validarArchivoReporte(archivo);
     if (error) {
@@ -60,7 +63,25 @@ export function ReporteSyscafe({
     }
     setElegido(archivo);
     setPrevia(TIPOS_IMAGEN.includes(archivo.type) ? URL.createObjectURL(archivo) : null);
-  };
+  }, []);
+
+  const yaSubido = Boolean(traslado.reporte_syscafe_url);
+  const zonaActiva = puedeSubir && !yaSubido && !elegido;
+
+  // Pegar una captura (Ctrl+V) mientras la zona esta disponible.
+  useEffect(() => {
+    if (!zonaActiva) return;
+    const alPegar = (ev: ClipboardEvent) => {
+      const items = Array.from(ev.clipboardData?.items ?? []);
+      const item = items.find((i) => i.kind === "file");
+      const archivo = item?.getAsFile();
+      if (!archivo) return;
+      ev.preventDefault();
+      alElegir(archivo);
+    };
+    document.addEventListener("paste", alPegar);
+    return () => document.removeEventListener("paste", alPegar);
+  }, [zonaActiva, alElegir]);
 
   const descartar = () => {
     setElegido(null);
@@ -86,83 +107,94 @@ export function ReporteSyscafe({
   if (url) {
     const esPdf = traslado.reporte_syscafe_tipo === "application/pdf";
     return (
-      <Dato etiqueta="Reporte Syscafe">
-        <span className="flex flex-col items-start gap-1">
-          {esPdf ? (
-            <a href={url} target="_blank" rel="noopener noreferrer" className={claseBoton("secundario")}>
-              <Icono nombre="factura" className="h-4 w-4" />
-              Ver PDF
-            </a>
-          ) : (
-            <a
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Abrir reporte Syscafe"
-              className="inline-block"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element -- URL publica de Storage, igual que en Imagenes */}
-              <img
-                src={url}
-                alt="Reporte Syscafe"
-                loading="lazy"
-                className="h-24 w-auto max-w-full rounded-md border border-line bg-white object-contain"
-              />
-            </a>
-          )}
-          {traslado.reporte_syscafe_at ? (
-            <span className="text-xs text-muted">
-              Subido por {traslado.reporte_syscafe_por ?? "—"}, {fechaHora(traslado.reporte_syscafe_at)}
-            </span>
-          ) : null}
-        </span>
-      </Dato>
+      <div className="flex flex-col items-start gap-1.5">
+        {esPdf ? (
+          <a href={url} target="_blank" rel="noopener noreferrer" className={claseBoton("secundario")}>
+            <Icono nombre="factura" className="h-4 w-4" />
+            Ver PDF
+          </a>
+        ) : (
+          <a href={url} target="_blank" rel="noopener noreferrer" aria-label="Abrir reporte Syscafe" className="inline-block">
+            {/* eslint-disable-next-line @next/next/no-img-element -- URL publica de Storage, igual que en Imagenes */}
+            <img src={url} alt="Reporte Syscafe" loading="lazy" className={claseMiniatura} />
+          </a>
+        )}
+        {traslado.reporte_syscafe_at ? (
+          <span className="text-xs text-muted">
+            {traslado.reporte_syscafe_por ?? "—"} · {fechaHora(traslado.reporte_syscafe_at)}
+          </span>
+        ) : null}
+      </div>
     );
   }
 
-  return (
-    <Dato etiqueta="Reporte Syscafe">
-      {!puedeSubir ? (
-        <span className="text-sm text-muted">Sin reporte</span>
-      ) : elegido ? (
-        <span className="flex flex-col items-start gap-2">
-          {previa ? (
-            // eslint-disable-next-line @next/next/no-img-element -- vista previa local (blob:), no es un recurso optimizable
-            <img
-              src={previa}
-              alt="Vista previa del reporte"
-              className="h-24 w-auto max-w-full rounded-md border border-line bg-white object-contain"
-            />
-          ) : (
-            <span className="flex items-center gap-2 text-sm text-ink">
-              <Icono nombre="factura" className="h-4 w-4" />
-              <span>{elegido.name}</span>
-            </span>
-          )}
-          <span className="text-xs text-muted">Una vez subido no se puede cambiar. ¿Confirmar?</span>
-          <span className="flex flex-wrap gap-2">
-            <button onClick={confirmar} disabled={subiendo} className={claseBoton("primario")}>
-              {subiendo ? "Subiendo…" : "Confirmar y subir"}
-            </button>
-            <button onClick={descartar} disabled={subiendo} className={claseBoton("fantasma")}>
-              Cancelar
-            </button>
+  if (!puedeSubir) return <span className="text-sm text-muted">Sin reporte</span>;
+
+  if (elegido) {
+    return (
+      <div className="flex flex-col items-start gap-2">
+        {previa ? (
+          // eslint-disable-next-line @next/next/no-img-element -- vista previa local (blob:), no es un recurso optimizable
+          <img src={previa} alt="Vista previa del reporte" className={claseMiniatura} />
+        ) : (
+          <span className="flex items-center gap-2 text-sm text-ink">
+            <Icono nombre="factura" className="h-4 w-4" />
+            <span>{elegido.name}</span>
           </span>
+        )}
+        <span className="text-xs text-muted">Después no se puede cambiar.</span>
+        <span className="flex flex-wrap gap-2">
+          <button onClick={confirmar} disabled={subiendo} className={claseBoton("primario")}>
+            {subiendo ? "Subiendo…" : "Confirmar y subir"}
+          </button>
+          <button onClick={descartar} disabled={subiendo} className={claseBoton("fantasma")}>
+            Cancelar
+          </button>
         </span>
-      ) : (
-        <span className="flex flex-col items-start gap-1">
-          <span className="text-sm text-muted">Sin reporte</span>
-          <input
-            ref={entrada}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,application/pdf"
-            aria-label="Archivo del reporte Syscafe"
-            onChange={(e) => alElegir(e.target.files?.[0])}
-            className="text-sm text-ink file:mr-2 file:min-h-11 file:cursor-pointer file:rounded-md file:border file:border-line-strong file:bg-surface-2 file:px-3 file:text-sm file:font-medium"
-          />
-          <span className="text-xs text-muted">JPG, PNG, WebP o PDF, hasta 5 MB.</span>
-        </span>
-      )}
-    </Dato>
+      </div>
+    );
+  }
+
+  const alSoltar = (ev: DragEvent<HTMLElement>) => {
+    ev.preventDefault();
+    setEncima(false);
+    alElegir(ev.dataTransfer?.files?.[0]);
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label="Subir reporte Syscafe"
+      onClick={() => entrada.current?.click()}
+      onKeyDown={(ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          entrada.current?.click();
+        }
+      }}
+      onDragOver={(ev) => {
+        ev.preventDefault();
+        setEncima(true);
+      }}
+      onDragLeave={() => setEncima(false)}
+      onDrop={alSoltar}
+      className={`flex min-h-32 w-full cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border-2 border-dashed px-4 py-5 text-center transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ok ${
+        encima ? "border-ok bg-ok/10" : "border-line-strong bg-surface hover:border-ok hover:bg-surface-2"
+      }`}
+    >
+      <Icono nombre="arriba" className="h-5 w-5 text-ok-fg" />
+      <span className="text-sm font-semibold text-ink">Subir reporte</span>
+      <span className="text-xs text-muted">Arrastra, pega o haz clic · JPG, PNG, PDF · 5 MB</span>
+      <input
+        ref={entrada}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,application/pdf"
+        aria-label="Archivo del reporte Syscafe"
+        onClick={(ev) => ev.stopPropagation()}
+        onChange={(e) => alElegir(e.target.files?.[0])}
+        className="sr-only"
+      />
+    </div>
   );
 }

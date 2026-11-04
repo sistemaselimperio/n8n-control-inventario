@@ -574,6 +574,59 @@ export interface ResumenTalonarioPunto {
 
 export const fetchResumenTalonarios = () => getJson<ResumenTalonarioPunto[]>("/talonarios-puntos/resumen");
 
+// Talonarios activos de UN punto (GET /puntos/{id}/talonario): responde 200 con
+// `talonarios: []` cuando el punto aun no configura ninguno. No depende del
+// resumen global de /talonarios-puntos/resumen.
+export interface TalonariosDePunto {
+  talonarios: TalonarioActivo[];
+  talonario: TalonarioActivo | null;
+}
+
+export const fetchTalonarioPunto = (puntoId: string) =>
+  getJson<TalonariosDePunto>(`/puntos/${encodeURIComponent(puntoId)}/talonario`);
+
+// Traslados que llegaron (o van de camino) a un punto: GET /traslados-puntos con
+// destino_id (los 100 mas recientes). Esa ruta devuelve filas completas del
+// traslado; aca se normalizan a la misma forma que /traslados-puntos/syscafe
+// para reutilizar la tabla y los modales de /traslados.
+interface TrasladoCrudo {
+  id: string;
+  consecutivo: number | null;
+  tipo: TipoTraslado;
+  numero_talonario: string | null;
+  talonario_id: string | null;
+  numero_syscafe: string | null;
+  punto_origen_id: string | null;
+  punto_origen_nombre: string | null;
+  punto_destino_id: string | null;
+  punto_destino_nombre: string | null;
+  estado: string;
+  fecha: string;
+  created_at: string;
+}
+
+export const listarTrasladosRecibidos = async (puntoId: string): Promise<FilaTrasladoSyscafe[]> => {
+  const crudos = await getJson<TrasladoCrudo[]>(`/traslados-puntos?destino_id=${encodeURIComponent(puntoId)}`);
+  return crudos.map((t) => ({
+    tipo: "traslado" as const,
+    id: t.id,
+    consecutivo: t.consecutivo,
+    numero_talonario: t.numero_talonario,
+    talonario_id: t.talonario_id,
+    numero_syscafe: t.numero_syscafe,
+    punto_origen_id: t.punto_origen_id,
+    punto_origen_nombre: t.punto_origen_nombre,
+    tipo_traslado: t.tipo,
+    punto_destino_id: t.punto_destino_id,
+    punto_destino_nombre: t.punto_destino_nombre,
+    estado: t.estado,
+    fecha: t.fecha,
+    created_at: t.created_at,
+    motivo: null,
+    anulado_por_nombre: null,
+  }));
+};
+
 export const fetchPuntosPublicos = () => getJson<{ id: string; nombre: string; codigo: string | null }[]>("/puntos");
 
 // Guarda (o borra, con null) el numero Syscafe de un traslado. Requiere sesion

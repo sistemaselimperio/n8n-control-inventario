@@ -12,17 +12,26 @@
 // reforzar. El detalle de cada cuadrito se ve al pasar el mouse, al tocarlo
 // (tablet) o con el teclado.
 //
-// Color: un solo tono azul (rampa secuencial de la skill dataviz). El nivel
+// Color: un solo tono verde de marca (rampa secuencial de la skill dataviz). El nivel
 // "Mucho trabajo" ademas lleva borde claro, asi no depende solo del color.
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { fetchCargaTurnos, fetchSedes, type CeldaCarga } from "@/lib/api";
-import { claseBoton, EncabezadoPagina, EstadoVacio, ErrorConReintento, Icono, Panel, Segmentado } from "@/components/ui";
+import {
+  claseBoton,
+  EncabezadoPagina,
+  EstadoVacio,
+  ErrorConReintento,
+  Icono,
+  Panel,
+  Segmentado,
+  TarjetaFiltros,
+} from "@/components/ui";
 import { useSesion } from "@/lib/SesionProvider";
 
-const AZUL_BARRA = "var(--color-brand-blue)";
+const VERDE_BARRA = "var(--color-brand-blue)";
 
 // Niveles de la grilla, de menos a mas. "mucho" = hora pico (la calcula el
 // backend: percentil 90 de las horas con trabajo).
@@ -30,9 +39,9 @@ type Nivel = "nada" | "poco" | "normal" | "mucho";
 
 const NIVELES: { nivel: Nivel; etiqueta: string; color: string }[] = [
   { nivel: "nada", etiqueta: "Sin trabajo", color: "var(--color-surface-2)" },
-  { nivel: "poco", etiqueta: "Poco", color: "color-mix(in srgb, var(--color-brand-blue) 45%, var(--color-surface-2))" },
-  { nivel: "normal", etiqueta: "Normal", color: "var(--color-brand-sky)" },
-  { nivel: "mucho", etiqueta: "Mucho trabajo", color: "var(--color-info)" },
+  { nivel: "poco", etiqueta: "Poco", color: "color-mix(in srgb, var(--color-ok) 30%, var(--color-surface))" },
+  { nivel: "normal", etiqueta: "Normal", color: "color-mix(in srgb, var(--color-ok) 65%, var(--color-surface))" },
+  { nivel: "mucho", etiqueta: "Mucho trabajo", color: "var(--color-ok)" },
 ];
 const COLOR_NIVEL = Object.fromEntries(NIVELES.map((n) => [n.nivel, n.color])) as Record<Nivel, string>;
 const ETIQUETA_NIVEL = Object.fromEntries(NIVELES.map((n) => [n.nivel, n.etiqueta])) as Record<Nivel, string>;
@@ -73,7 +82,7 @@ export default function TurnosPage() {
   const { esAdmin } = useSesion();
   if (!esAdmin) {
     return (
-      <main className="mx-auto flex w-full flex-1 max-w-7xl flex-col items-start gap-4 px-4 py-8 sm:px-6 sm:py-10">
+      <main className="mx-auto flex w-full flex-1 max-w-7xl flex-col items-start gap-4 px-4 py-6 sm:px-6 sm:py-8">
         <EncabezadoPagina titulo="Planificación de turnos" />
         <div className="rounded-md border border-warn/40 bg-warn-fill/15 px-4 py-3 text-sm text-warn">
           No tienes permiso para ver esta sección. Solo los administradores pueden acceder.
@@ -143,7 +152,7 @@ function ContenidoTurnos() {
   const nivelDetalle = celdaActiva ? nivelDe(detalle, umbral) : null;
 
   return (
-    <main className="mx-auto flex w-full min-w-0 max-w-7xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
+    <main className="mx-auto flex w-full min-w-0 max-w-7xl flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8">
       <EncabezadoPagina
         titulo="Planificación de turnos"
         descripcion={
@@ -154,8 +163,8 @@ function ContenidoTurnos() {
         }
       />
 
-      {/* Filtros en una sola fila, con rotulos en palabras. */}
-      <section aria-label="Filtros" className="flex flex-wrap items-end gap-4">
+      {/* Filtros agrupados en una tarjeta, con rotulos en palabras. */}
+      <TarjetaFiltros etiqueta="Filtros" className="[&>div]:gap-4">
         <div className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted">Bodega</span>
           <Segmentado
@@ -187,7 +196,7 @@ function ContenidoTurnos() {
             </p>
           ) : null}
         </div>
-      </section>
+      </TarjetaFiltros>
 
       {error ? (
         <ErrorConReintento
@@ -271,7 +280,7 @@ function ContenidoTurnos() {
                     {total > 0 ? (
                       <div
                         className="h-full rounded-full transition-[width] duration-500"
-                        style={{ width: `${Math.max(2, ancho)}%`, backgroundColor: AZUL_BARRA, opacity: destacado ? 1 : 0.7 }}
+                        style={{ width: `${Math.max(2, ancho)}%`, backgroundColor: VERDE_BARRA, opacity: destacado ? 1 : 0.7 }}
                       />
                     ) : null}
                   </div>

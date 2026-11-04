@@ -19,7 +19,7 @@ export function ModalConfirmar({
   onCerrar: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-night/50 backdrop-blur-sm px-4" onClick={onCerrar}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-night/50 px-4" onClick={onCerrar}>
       <div
         className="flex w-full max-w-md flex-col gap-4 rounded-lg border border-line bg-surface p-5"
         onClick={(ev) => ev.stopPropagation()}

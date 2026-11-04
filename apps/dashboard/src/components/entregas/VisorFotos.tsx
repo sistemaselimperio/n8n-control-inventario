@@ -5,8 +5,8 @@ import { Icono } from "@/components/ui";
 
 export type FotoVisor = { url: string; etiqueta: string };
 
-// Visor de las fotos de un documento: imagen grande ajustada (object-contain)
-// sobre fondo oscuro, tira de miniaturas si hay varias, navegacion con
+// Visor de las fotos de un documento: pestañas con miniatura arriba (si hay
+// varias), imagen grande ajustada (object-contain) sobre fondo claro, navegacion con
 // botones y flechas izquierda/derecha, y enlace para abrir el original.
 // `teclado` permite apagar las flechas mientras hay otro dialogo encima.
 export function VisorFotos({ fotos, teclado = true }: { fotos: FotoVisor[]; teclado?: boolean }) {
@@ -39,7 +39,7 @@ export function VisorFotos({ fotos, teclado = true }: { fotos: FotoVisor[]; tecl
 
   if (!actual) {
     return (
-      <div className="flex min-h-64 items-center justify-center rounded-md border border-line bg-page p-6 text-sm text-muted">
+      <div className="flex min-h-64 items-center justify-center rounded-lg bg-surface-2 p-6 text-sm text-muted">
         Este documento no tiene fotos.
       </div>
     );
@@ -50,24 +50,33 @@ export function VisorFotos({ fotos, teclado = true }: { fotos: FotoVisor[]; tecl
     setEstados((prev) => (prev[url] === valor ? prev : { ...prev, [url]: valor }));
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-sm text-soft">
-          {actual.etiqueta}
-          {hayVarias ? <span className="text-muted"> · {indice + 1} de {total}</span> : null}
-        </span>
-        <a
-          href={actual.url}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex min-h-9 items-center rounded-md border border-line px-3 text-xs font-medium text-info transition-colors duration-150 hover:bg-surface-2"
-        >
-          Abrir original
-          <Icono nombre="externo" />
-        </a>
-      </div>
+    <div className="flex flex-col gap-2">
+      {/* Fotos del documento como pestañas con miniatura: se ve de una vez
+          cuales hay (foto inicial, bodega, traslado) y cual esta abierta. */}
+      {hayVarias ? (
+        <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Fotos del documento">
+          {fotos.map((foto, i) => (
+            <button
+              key={foto.url}
+              type="button"
+              onClick={() => setIndice(i)}
+              aria-label={`Ver foto ${i + 1} de ${total}: ${foto.etiqueta}`}
+              aria-current={i === indice ? "true" : undefined}
+              className={`flex min-h-11 shrink-0 items-center gap-2 rounded-md border p-1.5 pr-3 text-left transition-colors duration-150 ${
+                i === indice
+                  ? "border-ok bg-ok/10 text-ink"
+                  : "border-line bg-surface text-muted hover:border-line-strong hover:text-ink"
+              }`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- ver nota abajo. */}
+              <img src={foto.url} alt="" className="h-8 w-10 rounded-sm bg-surface-2 object-cover" />
+              <span className="text-sm font-medium">{foto.etiqueta}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
 
-      <div className="relative flex min-h-72 flex-1 items-center justify-center overflow-hidden rounded-md border border-line bg-brand-night">
+      <div className="relative flex h-64 items-center lg:h-[320px] justify-center overflow-hidden rounded-lg bg-surface-2">
         {estado === "error" ? (
           <p className="max-w-xs px-6 text-center text-sm text-soft">
             No se pudo cargar la foto. Ábrela en una pestaña nueva.
@@ -75,7 +84,7 @@ export function VisorFotos({ fotos, teclado = true }: { fotos: FotoVisor[]; tecl
         ) : (
           <>
             {estado === undefined ? (
-              <div aria-hidden className="absolute inset-0 animate-pulse bg-surface-2/40" />
+              <div aria-hidden className="absolute inset-0 animate-pulse bg-line/40" />
             ) : null}
             {/* eslint-disable-next-line @next/next/no-img-element -- fotos
                 vienen de Supabase Storage, no del dominio de Next. */}
@@ -96,13 +105,30 @@ export function VisorFotos({ fotos, teclado = true }: { fotos: FotoVisor[]; tecl
           </>
         )}
 
+        {/* Barra inferior sobre la foto: cual es, posicion y abrir original. */}
+        <div className="absolute inset-x-2 bottom-2 flex items-center justify-between gap-2">
+          <span className="rounded-md bg-surface/95 px-2.5 py-1 text-xs font-medium text-ink">
+            {actual.etiqueta}
+            {hayVarias ? <span className="text-muted"> · {indice + 1} de {total}</span> : null}
+          </span>
+          <a
+            href={actual.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex min-h-9 items-center gap-1 rounded-md bg-surface/95 px-3 text-xs font-medium text-ink transition-colors duration-150 hover:bg-surface"
+          >
+            Abrir original
+            <Icono nombre="externo" />
+          </a>
+        </div>
+
         {hayVarias ? (
           <>
             <button
               type="button"
               onClick={() => ir(-1)}
               aria-label="Foto anterior"
-              className="absolute left-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-md border border-line bg-surface/90 text-ink transition-colors duration-150 hover:bg-surface-2"
+              className="absolute left-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-surface/95 text-ink transition-colors duration-150 hover:bg-surface"
             >
               <Icono nombre="izquierda" className="h-5 w-5" />
             </button>
@@ -110,34 +136,13 @@ export function VisorFotos({ fotos, teclado = true }: { fotos: FotoVisor[]; tecl
               type="button"
               onClick={() => ir(1)}
               aria-label="Foto siguiente"
-              className="absolute right-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-md border border-line bg-surface/90 text-ink transition-colors duration-150 hover:bg-surface-2"
+              className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-surface/95 text-ink transition-colors duration-150 hover:bg-surface"
             >
               <Icono nombre="derecha" className="h-5 w-5" />
             </button>
           </>
         ) : null}
       </div>
-
-      {hayVarias ? (
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {fotos.map((foto, i) => (
-            <button
-              key={foto.url}
-              type="button"
-              onClick={() => setIndice(i)}
-              aria-label={`Foto ${i + 1} de ${total}`}
-              aria-current={i === indice ? "true" : undefined}
-              className={`flex w-20 shrink-0 flex-col gap-1 rounded-md border p-1 text-left transition-colors duration-150 ${
-                i === indice ? "border-brand-gold bg-surface-2" : "border-line hover:border-line-strong"
-              }`}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element -- ver nota arriba. */}
-              <img src={foto.url} alt="" className="h-14 w-full rounded-sm bg-brand-night object-cover" />
-              <span className="truncate text-[11px] text-muted">{foto.etiqueta}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }

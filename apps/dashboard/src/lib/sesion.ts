@@ -155,7 +155,7 @@ export const areaEfectiva = (u: UsuarioDashboard | null | undefined): AreaDashbo
 const RUTAS_POR_AREA: Record<AreaDashboard, string[] | "todas"> = {
   todo: "todas",
   bodega: ["/entregas", "/", "/productos", "/ranking"],
-  traslados: ["/traslados"],
+  traslados: ["/traslados", "/puntos"],
 };
 
 const coincideRuta = (ruta: string, base: string) =>

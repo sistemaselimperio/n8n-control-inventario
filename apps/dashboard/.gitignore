@@ -42,3 +42,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# Carpeta de trabajo de la herramienta de diseño
+/.taste-skill/

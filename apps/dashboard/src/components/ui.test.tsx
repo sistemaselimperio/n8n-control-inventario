@@ -1,7 +1,19 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { Boton, EncabezadoPagina, ErrorConReintento, EstadoVacio, Indicador, Panel, Pildora, Segmentado, claseBoton } from "./ui";
+import {
+  Boton,
+  CampoFiltro,
+  EncabezadoPagina,
+  ErrorConReintento,
+  EstadoVacio,
+  Indicador,
+  Panel,
+  Pildora,
+  Segmentado,
+  TarjetaFiltros,
+  claseBoton,
+} from "./ui";
 
 describe("ErrorConReintento", () => {
   it("muestra el mensaje como alerta y reintenta al pulsar", async () => {
@@ -115,5 +127,32 @@ describe("Pildora y EncabezadoPagina", () => {
     expect(screen.getByText("Panel")).toBeInTheDocument();
     expect(screen.getByText("Todo el historial")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ir" })).toBeInTheDocument();
+  });
+});
+
+describe("TarjetaFiltros y CampoFiltro", () => {
+  it("agrupa los controles en una region con nombre y muestra el resumen", () => {
+    render(
+      <TarjetaFiltros etiqueta="Filtros de prueba" resumen="3 filas">
+        <CampoFiltro id="f-estado" etiqueta="Estado">
+          <select id="f-estado">
+            <option>Todos</option>
+          </select>
+        </CampoFiltro>
+      </TarjetaFiltros>,
+    );
+    const region = screen.getByRole("region", { name: "Filtros de prueba" });
+    expect(region).toContainElement(screen.getByLabelText("Estado"));
+    expect(region).toHaveTextContent("3 filas");
+  });
+});
+
+describe("Indicador compacto", () => {
+  it("no lleva iconos y muestra rotulo, cifra y detalle", () => {
+    const { container } = render(<Indicador etiqueta="Con novedad" valor="4" detalle="Recibidos con diferencias" cargando={false} />);
+    expect(container.querySelector("svg")).toBeNull();
+    expect(screen.getByText("Con novedad")).toBeInTheDocument();
+    expect(screen.getByText("4")).toBeInTheDocument();
+    expect(screen.getByText("Recibidos con diferencias")).toBeInTheDocument();
   });
 });

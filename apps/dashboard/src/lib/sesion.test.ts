@@ -158,12 +158,17 @@ describe("roles, areas y rutas", () => {
     expect(rutaPermitida(bodega, "/productos/x")).toBe(true);
     expect(rutaPermitida(bodega, "/")).toBe(true);
     expect(rutaPermitida(bodega, "/traslados")).toBe(false);
+    expect(rutaPermitida(bodega, "/puntos")).toBe(false);
     // "/" solo coincide exacto, no como prefijo de todo.
     expect(rutaPermitida(bodega, "/creador")).toBe(false);
     // Un prefijo parcial no cuenta ("/entregasX").
     expect(rutaPermitida(bodega, "/entregasX")).toBe(false);
     const traslados = usuario("consulta", "traslados");
     expect(rutaPermitida(traslados, "/traslados/abc")).toBe(true);
+    // /puntos y /puntos/[id] se ven con el mismo area que /traslados.
+    expect(rutaPermitida(traslados, "/puntos")).toBe(true);
+    expect(rutaPermitida(traslados, "/puntos/p1")).toBe(true);
+    expect(rutaPermitida(traslados, "/puntosX")).toBe(false);
     expect(rutaPermitida(traslados, "/entregas")).toBe(false);
     expect(rutaPermitida(usuario("admin"), "/cualquiera")).toBe(true);
   });

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -85,6 +85,22 @@ describe("ReporteSyscafe: subir", () => {
     await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
     expect(entrada()).toBeInTheDocument();
     expect(api.subirReporteSyscafeDashboard).not.toHaveBeenCalled();
+  });
+
+  it("arrastrar una imagen a la zona muestra la vista previa", () => {
+    render(<ReporteSyscafe traslado={sinReporte} puedeSubir onSubido={vi.fn()} />);
+    const zona = screen.getByRole("button", { name: /subir reporte syscafe/i });
+    fireEvent.drop(zona, { dataTransfer: { files: [archivo("r.png", "image/png")] } });
+    expect(screen.getByAltText("Vista previa del reporte")).toBeInTheDocument();
+  });
+
+  it("pegar una imagen (Ctrl+V) muestra la vista previa", () => {
+    render(<ReporteSyscafe traslado={sinReporte} puedeSubir onSubido={vi.fn()} />);
+    const f = archivo("captura.png", "image/png");
+    fireEvent.paste(document, {
+      clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => f }] },
+    });
+    expect(screen.getByAltText("Vista previa del reporte")).toBeInTheDocument();
   });
 
   it("un archivo invalido muestra el error y no pide confirmacion", async () => {

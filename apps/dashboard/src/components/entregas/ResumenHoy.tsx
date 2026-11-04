@@ -5,7 +5,7 @@
 // facturadas por sede) y, al lado, mosaicos compactos en horizontal: la cifra
 // en un cuadro con el color de su estado y el rotulo con el contexto al lado.
 // Las tarjetas con filtro son botones que cambian directamente los filtros de /entregas (estado / flujo, en la URL);
-// la que coincide con el filtro activo queda marcada en dorado y, al pulsarla
+// la que coincide con el filtro activo queda marcada con borde verde y, al pulsarla
 // de nuevo, lo quita. Todo se calcula de lo ya cargado, sin pedirle nada nuevo
 // al backend.
 
@@ -53,7 +53,7 @@ function Contenedor({
       onClick={alPulsar}
       aria-pressed={activa}
       className={`group ${base} w-full cursor-pointer transition-colors duration-150 hover:bg-surface-2 ${
-        activa ? "border-brand-gold bg-surface-2" : "border-line hover:border-line-strong"
+        activa ? "border-ok bg-surface-2" : "border-line hover:border-line-strong"
       }`}
     >
       {children}

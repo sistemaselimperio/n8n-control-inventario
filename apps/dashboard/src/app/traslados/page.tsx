@@ -20,6 +20,11 @@ import {
 } from "@/lib/api";
 import {
   claseBoton,
+  CLASE_CAMPO,
+  CLASE_FILA_CLICABLE,
+  CLASE_TABLA,
+  CLASE_TBODY,
+  CLASE_THEAD,
   EncabezadoPagina,
   ErrorConReintento,
   EstadoVacio,
@@ -29,6 +34,17 @@ import {
   type TonoPildora,
 } from "@/components/ui";
 import { useSesion } from "@/lib/SesionProvider";
+import {
+  ATAJOS_FECHA,
+  BotonLimpiarFiltros,
+  BuscadorBarra,
+  CamposRangoFecha,
+  MenuFiltro,
+  PestanasConteo,
+  rangoDeAtajo,
+  textoFecha,
+  type ModoFecha,
+} from "@/components/filtros";
 import { areaEfectiva } from "@/lib/sesion";
 import {
   EMPRESAS_TALONARIO,
@@ -72,6 +88,18 @@ function textoBusqueda(f: FilaTrasladoSyscafe): string {
   );
 }
 
+type Vista = "todos" | "pendientes" | "en_transito" | "recibido_con_novedad" | "recibido" | "anulada";
+
+// Vistas rapidas en el orden del trabajo: lo que falta primero.
+const VISTAS: { valor: Vista; texto: string; tono?: TonoPildora }[] = [
+  { valor: "todos", texto: "Todos" },
+  { valor: "pendientes", texto: "Pendiente N° Traslado", tono: "warn" },
+  { valor: "en_transito", texto: "En tránsito", tono: ESTADOS.en_transito.tono },
+  { valor: "recibido_con_novedad", texto: "Con novedad", tono: ESTADOS.recibido_con_novedad.tono },
+  { valor: "recibido", texto: "Recibidos", tono: ESTADOS.recibido.tono },
+  { valor: "anulada", texto: "Anuladas", tono: ESTADOS.anulada.tono },
+];
+
 export default function TrasladosPage() {
   const { usuario, puedeEditar } = useSesion();
   // Supervisores de area "bodega" no pueden escribir Syscafe (el backend responde 403).
@@ -85,6 +113,8 @@ export default function TrasladosPage() {
   const [tipo, setTipo] = useState<"" | TipoTraslado>("");
   const [fechaDesde, setFechaDesde] = useState("");
   const [fechaHasta, setFechaHasta] = useState("");
+  // Atajo de fecha elegido; "elegir" muestra los campos Desde/Hasta.
+  const [modoFecha, setModoFecha] = useState<ModoFecha>("todas");
   const [busqueda, setBusqueda] = useState("");
   const busquedaDiferida = useDeferredValue(busqueda);
 
@@ -139,191 +169,154 @@ export default function TrasladosPage() {
   }, [porEstado, busquedaDiferida]);
   const textoBuscado = busquedaDiferida.trim();
 
+  // Vista rapida: "pendientes" es un filtro del servidor (sin numero Syscafe);
+  // las demas filtran por estado en el cliente.
+  const vista: Vista = soloPendientes ? "pendientes" : ((estado || "todos") as Vista);
+  const elegirVista = (v: Vista) => {
+    setSoloPendientes(v === "pendientes");
+    setEstado(v === "todos" || v === "pendientes" ? "" : v);
+  };
+  const conteos = useMemo(() => {
+    const lista = filas ?? [];
+    const porEstadoDe = (e: string) => lista.filter((f) => f.estado === e).length;
+    return {
+      todos: lista.length,
+      pendientes: lista.filter((f) => !f.numero_syscafe && f.tipo !== "anulada").length,
+      en_transito: porEstadoDe("en_transito"),
+      recibido_con_novedad: porEstadoDe("recibido_con_novedad"),
+      recibido: porEstadoDe("recibido"),
+      anulada: porEstadoDe("anulada"),
+    } satisfies Record<Vista, number>;
+  }, [filas]);
+
+  const elegirModoFecha = (m: ModoFecha) => {
+    setModoFecha(m);
+    const [desde, hasta] = rangoDeAtajo(m, new Date()) ?? [fechaDesde, fechaHasta];
+    setFechaDesde(desde);
+    setFechaHasta(hasta);
+  };
+
+  const hayFiltros = Boolean(
+    puntoId || estado || empresa || soloPendientes || tipo || fechaDesde || fechaHasta || busqueda,
+  );
+  const limpiarFiltros = () => {
+    setPuntoId("");
+    setEstado("");
+    setEmpresa("");
+    setSoloPendientes(false);
+    setTipo("");
+    setModoFecha("todas");
+    setFechaDesde("");
+    setFechaHasta("");
+    setBusqueda("");
+  };
+
   const abrirFila = (fila: FilaTrasladoSyscafe) => {
     if (fila.tipo === "anulada") setAnuladaDetalle(fila);
     else setDetalleId(fila.id);
   };
 
-  const claseCampo = "min-h-11 rounded-md border border-line-strong bg-surface px-3 text-sm text-ink";
+  const claseCampo = CLASE_CAMPO;
 
   return (
-    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
+    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8">
       <EncabezadoPagina
         titulo="Traslados"
-        descripcion="Revisa cada traslado de talonario y registra su número en Syscafe (por ejemplo NBR-945). Los pendientes aparecen primero; haz clic en una fila para ver el detalle."
+        descripcion="Revisa cada traslado y registra su número en Syscafe (por ejemplo NBR-945). Haz clic en una fila para ver el detalle."
       />
 
-      {/* Filtros y tabla en una sola superficie: los filtros arriba, separados
-          de las filas por una regla. */}
-      <section aria-label="Traslados" className="overflow-hidden rounded-lg border border-line bg-surface">
-        <div className="flex flex-wrap items-end gap-3 border-b border-line p-4">
-          <div className="flex w-full flex-col gap-1">
-            <label htmlFor="traslados-buscar" className="text-xs font-medium text-muted">
-              Buscar traslado
-            </label>
-            <div className="relative">
-              <input
-                id="traslados-buscar"
-                type="search"
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") setBusqueda("");
-                }}
-                placeholder="Buscar por número Syscafe, talonario, punto o persona…"
-                autoComplete="off"
-                className={`${claseCampo} h-11 w-full pr-11 [&::-webkit-search-cancel-button]:hidden`}
-              />
-              {busqueda ? (
-                <button
-                  type="button"
-                  onClick={() => setBusqueda("")}
-                  aria-label="Borrar búsqueda"
-                  className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:text-ink"
-                >
-                  <svg
-                    aria-hidden
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                  >
-                    <path d="M6 6l12 12M18 6 6 18" />
-                  </svg>
-                </button>
-              ) : null}
-            </div>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="traslados-punto" className="text-xs font-medium text-muted">
-              Punto de origen
-            </label>
-            <select
-              id="traslados-punto"
-              value={puntoId}
-              onChange={(e) => setPuntoId(e.target.value)}
-              className={claseCampo}
-            >
-              <option value="">Todos los puntos</option>
-              {(puntos ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="traslados-estado" className="text-xs font-medium text-muted">
-              Estado
-            </label>
-            <select
-              id="traslados-estado"
-              value={estado}
-              onChange={(e) => setEstado(e.target.value)}
-              className={claseCampo}
-            >
-              <option value="">Todos</option>
-              {Object.entries(ESTADOS).map(([valor, { texto }]) => (
-                <option key={valor} value={valor}>
-                  {texto}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="traslados-empresa" className="text-xs font-medium text-muted">
-              Empresa
-            </label>
-            <select
-              id="traslados-empresa"
-              value={empresa}
-              onChange={(e) => setEmpresa(e.target.value)}
-              className={claseCampo}
-            >
-              <option value="">Todas</option>
-              {EMPRESAS_TALONARIO.map((e) => (
-                <option key={e.letra} value={e.letra}>
-                  {e.nombre} ({e.letra})
-                </option>
-              ))}
-            </select>
-          </div>
-          {/* Rango de fechas -- desde/hasta con "Todo" para volver a no filtrar. */}
-          <div className="flex flex-col gap-1">
-            <label htmlFor="traslados-desde" className="text-xs font-medium text-muted">
-              Desde
-            </label>
-            <input
-              id="traslados-desde"
-              type="date"
-              value={fechaDesde}
-              onChange={(e) => setFechaDesde(e.target.value)}
-              max={fechaHasta || undefined}
-              className={claseCampo}
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="traslados-hasta" className="text-xs font-medium text-muted">
-              Hasta
-            </label>
-            <input
-              id="traslados-hasta"
-              type="date"
-              value={fechaHasta}
-              onChange={(e) => setFechaHasta(e.target.value)}
-              min={fechaDesde || undefined}
-              className={claseCampo}
-            />
-          </div>
-          <button
-            onClick={() => {
-              setFechaDesde("");
-              setFechaHasta("");
-            }}
-            aria-pressed={!fechaDesde && !fechaHasta}
-            className={`min-h-11 rounded-md border px-3 text-sm font-medium transition-colors duration-150 ${
-              !fechaDesde && !fechaHasta
-                ? "border-brand-blue bg-brand-blue text-white"
-                : "border-line-strong bg-surface text-soft hover:bg-surface-2"
-            }`}
-          >
-            Todas las fechas
-          </button>
-          <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-ink">
-            <input
-              type="checkbox"
-              checked={soloPendientes}
-              onChange={(e) => setSoloPendientes(e.target.checked)}
-              className="h-5 w-5 cursor-pointer accent-brand-blue"
-            />
-            Solo pendientes de Syscafe
-          </label>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="traslados-tipo" className="text-xs font-medium text-muted">
-              Tipo
-            </label>
-            <select
-              id="traslados-tipo"
-              value={tipo}
-              onChange={(e) => setTipo(e.target.value as "" | TipoTraslado)}
-              className={claseCampo}
-            >
-              <option value="">Todos</option>
-              <option value="entre_puntos">Entre puntos</option>
-              <option value="directo">Llega directo</option>
-            </select>
-          </div>
-          <p className="ml-auto text-sm tabular-nums text-muted" aria-live="polite">
+      {/* Traslados: titulo con total, vistas como pestañas subrayadas con
+          su conteo, una barra con la busqueda y filtros que se leen como
+          frase ("Fecha: Hoy"), y la tabla debajo. */}
+      <section aria-labelledby="traslados-titulo" className="rounded-lg border border-line bg-surface">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-3 sm:px-5">
+          <h2 id="traslados-titulo" className="text-base font-semibold text-ink">
+            Traslados
+          </h2>
+          <p className="text-sm tabular-nums text-muted" aria-live="polite">
             {isLoading
               ? "Cargando…"
               : textoBuscado
                 ? `Mostrando ${visibles.length} de ${porEstado.length}`
-                : `${visibles.length} ${visibles.length === 1 ? "fila" : "filas"}`}
+                : `${visibles.length} ${visibles.length === 1 ? "traslado" : "traslados"}`}
           </p>
         </div>
 
+        <div className="mt-1">
+          <PestanasConteo
+            etiqueta="Vista"
+            valor={vista}
+            onCambio={elegirVista}
+            sinConteo={isLoading}
+            opciones={VISTAS.map((v) => ({ ...v, conteo: conteos[v.valor] }))}
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3 sm:px-5">
+          <BuscadorBarra
+            id="traslados-buscar"
+            etiqueta="Buscar traslado"
+            valor={busqueda}
+            onCambio={setBusqueda}
+            placeholder="Buscar Syscafe, talonario, punto o persona"
+            claseCampo={claseCampo}
+          />
+
+          <MenuFiltro
+            etiqueta="Punto"
+            valorTexto={(puntos ?? []).find((p) => p.id === puntoId)?.nombre ?? "Todos"}
+            activo={Boolean(puntoId)}
+            valor={puntoId}
+            onCambio={setPuntoId}
+            opciones={[{ valor: "", texto: "Todos los puntos" }, ...(puntos ?? []).map((p) => ({ valor: p.id, texto: p.nombre }))]}
+          />
+          <MenuFiltro
+            etiqueta="Fecha"
+            valorTexto={textoFecha(modoFecha, fechaDesde, fechaHasta)}
+            activo={modoFecha !== "todas"}
+            valor={modoFecha}
+            onCambio={elegirModoFecha}
+            opciones={ATAJOS_FECHA.map((x) => ({ ...x, mantenerAbierto: x.valor === "elegir" }))}
+          >
+            {modoFecha === "elegir" ? (
+              <CamposRangoFecha
+                idBase="traslados"
+                desde={fechaDesde}
+                hasta={fechaHasta}
+                onDesde={setFechaDesde}
+                onHasta={setFechaHasta}
+                claseCampo={claseCampo}
+              />
+            ) : null}
+          </MenuFiltro>
+          <MenuFiltro
+            etiqueta="Empresa"
+            valorTexto={EMPRESAS_TALONARIO.find((e) => e.letra === empresa)?.nombre ?? "Todas"}
+            activo={Boolean(empresa)}
+            valor={empresa}
+            onCambio={setEmpresa}
+            opciones={[
+              { valor: "", texto: "Todas" },
+              ...EMPRESAS_TALONARIO.map((e) => ({ valor: e.letra as string, texto: e.nombre })),
+            ]}
+          />
+          <MenuFiltro
+            etiqueta="Tipo"
+            valorTexto={tipo === "directo" ? "Llega directo" : tipo === "entre_puntos" ? "Entre puntos" : "Todos"}
+            activo={Boolean(tipo)}
+            valor={tipo}
+            onCambio={setTipo}
+            opciones={[
+              { valor: "" as const, texto: "Todos" },
+              { valor: "entre_puntos" as const, texto: "Entre puntos" },
+              { valor: "directo" as const, texto: "Llega directo" },
+            ]}
+          />
+
+          {hayFiltros ? <BotonLimpiarFiltros onClick={limpiarFiltros} /> : null}
+        </div>
+
+        <div className="overflow-hidden rounded-b-lg">
         {error ? (
           <div className="p-4">
             <ErrorConReintento mensaje="No se pudieron cargar los traslados." onReintentar={() => recargar()} />
@@ -353,8 +346,8 @@ export default function TrasladosPage() {
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-left text-sm">
-              <thead className="border-b border-line text-xs text-muted">
+            <table className={`${CLASE_TABLA} min-w-[820px]`}>
+              <thead className={CLASE_THEAD}>
                 <tr>
                   <th scope="col" className="py-3 pl-4 pr-3 font-medium">
                     Talonario
@@ -373,7 +366,7 @@ export default function TrasladosPage() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-line">
+              <tbody className={CLASE_TBODY}>
                 {visibles.map((fila) => {
                   const anulada = fila.tipo === "anulada";
                   const pendiente = !anulada && !fila.numero_syscafe;
@@ -386,7 +379,7 @@ export default function TrasladosPage() {
                       onKeyDown={(e) => {
                         if (e.target === e.currentTarget && e.key === "Enter") abrirFila(fila);
                       }}
-                      className="min-h-11 cursor-pointer transition-colors duration-150 hover:bg-surface-2 focus-visible:bg-surface-2"
+                      className={CLASE_FILA_CLICABLE}
                     >
                       {/* Regla dorada a la izquierda: lo pendiente de Syscafe.
                           El texto "Pendiente" de la columna siguiente es la
@@ -396,7 +389,7 @@ export default function TrasladosPage() {
                           pendiente ? "border-brand-gold" : "border-transparent"
                         }`}
                       >
-                        <span className={`cifra block text-[16px] ${anulada ? "text-muted" : "text-ink"}`}>
+                        <span className={`cifra block text-[14px] ${anulada ? "text-muted" : "text-ink"}`}>
                           {referencia(fila)}
                         </span>
                         {empresaTalonario(fila) ? (
@@ -411,7 +404,7 @@ export default function TrasladosPage() {
                         ) : (
                           <div className="flex items-center gap-2">
                             {fila.numero_syscafe ? (
-                              <span className="cifra text-[16px] text-ink">{fila.numero_syscafe}</span>
+                              <span className="cifra text-[14px] text-ink">{fila.numero_syscafe}</span>
                             ) : (
                               <Pildora tono="warn">Pendiente</Pildora>
                             )}
@@ -427,7 +420,7 @@ export default function TrasladosPage() {
                                 className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-md transition-colors duration-150 ${
                                   fila.numero_syscafe
                                     ? "text-muted hover:bg-surface-2 hover:text-ink"
-                                    : "border border-brand-gold/50 bg-brand-gold/10 text-brand-gold hover:bg-brand-gold/20"
+                                    : "border border-brand-gold/50 bg-brand-gold/10 text-gold-fg hover:bg-brand-gold/20"
                                 }`}
                               >
                                 <Icono nombre={fila.numero_syscafe ? "lapiz" : "mas"} className="h-4 w-4" />
@@ -459,6 +452,7 @@ export default function TrasladosPage() {
             </table>
           </div>
         )}
+      </div>
       </section>
 
       <Panel

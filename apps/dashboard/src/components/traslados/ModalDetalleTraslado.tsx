@@ -1,25 +1,22 @@
 "use client";
 
-// Detalle de un traslado: datos, numero Syscafe (editable para quien puede
-// asignarlo), productos con lo enviado vs. lo recibido (con su estado por
+// Detalle de un traslado: datos, apartado Syscafe (numero y reporte, editables
+// para quien puede asignarlos), productos con lo enviado vs. lo recibido (con su estado por
 // producto), constancia de recepcion, historial, novedad y fotos.
 
-import { useState } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import {
-  asignarSyscafeDashboard,
   fetchHistorialTraslado,
   fetchTrasladoDetalle,
   type EventoHistorialTraslado,
   type ItemTrasladoDetalle,
   type TrasladoDetalle,
 } from "@/lib/api";
-import { claseBoton, ErrorConReintento, Icono, Pildora, type TonoPildora } from "@/components/ui";
+import { ErrorConReintento, Icono, Pildora, type TonoPildora } from "@/components/ui";
 import { Folio } from "@/components/entregas/Folio";
 import { empresaTalonario, ESTADOS, fechaCorta, fechaHora, ORIGEN_DIRECTO, referencia } from "./compartido";
 import { Dato, ModalBase } from "./ModalBase";
-import { ReporteSyscafe } from "./ReporteSyscafe";
+import { SeccionSyscafe } from "./SeccionSyscafe";
 
 export function ModalDetalleTraslado({
   id,
@@ -37,25 +34,6 @@ export function ModalDetalleTraslado({
   });
   // El historial se carga al abrir el modal (no se refresca solo: son eventos ya registrados).
   const { data: historial } = useSWR(["traslado-historial", id], () => fetchHistorialTraslado(id));
-  const [editando, setEditando] = useState(false);
-  const [valor, setValor] = useState("");
-  const [guardando, setGuardando] = useState(false);
-
-  const guardar = async (nuevo: string | null) => {
-    setGuardando(true);
-    try {
-      await asignarSyscafeDashboard(id, nuevo);
-      toast.success(nuevo ? "Número Syscafe guardado" : "Número Syscafe borrado");
-      setEditando(false);
-      await mutate();
-      onCambio();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo guardar el número Syscafe");
-    } finally {
-      setGuardando(false);
-    }
-  };
-
   // Llega directo: no hay quien despache ni transporte, solo firma quien recibe.
   const directo = t?.tipo === "directo";
   const info = t ? (ESTADOS[t.estado] ?? { texto: t.estado, tono: "neutro" as TonoPildora }) : null;
@@ -87,72 +65,6 @@ export function ModalDetalleTraslado({
             </Dato>
             <Dato etiqueta="Fecha">{fechaCorta(t.fecha)}</Dato>
             {directo ? null : <Dato etiqueta="Transportador">{t.transportador_nombre || "—"}</Dato>}
-            <Dato etiqueta="Número Syscafe">
-              {editando ? (
-                <span className="flex flex-wrap items-center gap-2">
-                  <input
-                    autoFocus
-                    value={valor}
-                    onChange={(e) => setValor(e.target.value.toUpperCase())}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") guardar(valor.trim() || null);
-                      if (e.key === "Escape") {
-                        e.stopPropagation();
-                        setEditando(false);
-                      }
-                    }}
-                    placeholder="NBR-945"
-                    aria-label="Número Syscafe"
-                    className="min-h-11 w-36 rounded-md border border-line-strong bg-surface px-2 text-sm text-ink"
-                  />
-                  <button onClick={() => guardar(valor.trim() || null)} disabled={guardando} className={claseBoton("primario")}>
-                    {guardando ? "Guardando…" : "Guardar"}
-                  </button>
-                  <button onClick={() => setEditando(false)} className={claseBoton("fantasma")}>
-                    Cancelar
-                  </button>
-                </span>
-              ) : (
-                <span className="flex flex-wrap items-center gap-2">
-                  {t.numero_syscafe ? (
-                    <span className="cifra text-[16px] text-ink">{t.numero_syscafe}</span>
-                  ) : (
-                    <Pildora tono="warn">Pendiente</Pildora>
-                  )}
-                  {puedeAsignar ? (
-                    <>
-                      <button
-                        onClick={() => {
-                          setValor(t.numero_syscafe ?? "");
-                          setEditando(true);
-                        }}
-                        className={claseBoton("secundario")}
-                      >
-                        {t.numero_syscafe ? "Editar" : "Registrar"}
-                      </button>
-                      {t.numero_syscafe ? (
-                        <button onClick={() => guardar(null)} disabled={guardando} className={claseBoton("fantasma")}>
-                          Borrar
-                        </button>
-                      ) : null}
-                    </>
-                  ) : null}
-                </span>
-              )}
-            </Dato>
-            {t.numero_syscafe_at ? (
-              <Dato etiqueta="Syscafe registrado">
-                {t.numero_syscafe_por ?? "—"}, {fechaHora(t.numero_syscafe_at)}
-              </Dato>
-            ) : null}
-            <ReporteSyscafe
-              traslado={t}
-              puedeSubir={puedeAsignar}
-              onSubido={async () => {
-                await mutate();
-                onCambio();
-              }}
-            />
             <Dato etiqueta="Creado por">
               {t.creado_por_nombre ?? "—"}, {fechaHora(t.created_at)}
             </Dato>
@@ -160,6 +72,15 @@ export function ModalDetalleTraslado({
               {t.recibido_at ? `${t.recibido_por_nombre ?? "—"}, ${fechaHora(t.recibido_at)}` : "Aún sin recibir"}
             </Dato>
           </div>
+
+          <SeccionSyscafe
+            traslado={t}
+            puedeEditar={puedeAsignar}
+            onCambio={async () => {
+              await mutate();
+              onCambio();
+            }}
+          />
 
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -299,7 +220,7 @@ function ConstanciaRecepcion({ t }: { t: TrasladoDetalle }) {
               src={t.firma_recibe_url}
               alt="Firma de quien recibe"
               loading="lazy"
-              className="h-16 w-32 rounded-md border border-line bg-white object-contain"
+              className="h-16 w-32 rounded-md border border-line-strong bg-white object-contain p-1"
             />
             Firma recibe
           </a>
@@ -390,7 +311,7 @@ function Imagenes({ t }: { t: TrasladoDetalle }) {
               src={img.url}
               alt={img.etiqueta}
               loading="lazy"
-              className="h-24 w-full rounded-md border border-line bg-white object-contain"
+              className="h-24 w-full rounded-md border border-line-strong bg-white object-contain p-1"
             />
             {img.etiqueta}
           </a>

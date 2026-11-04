@@ -41,7 +41,7 @@ export default function CreadorPage() {
   // una pantalla que no puede cargar nada.
   if (!esAdmin) {
     return (
-      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col items-start gap-4 px-4 py-8 sm:px-6 sm:py-10">
+      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col items-start gap-4 px-4 py-6 sm:px-6 sm:py-8">
         <EncabezadoPagina titulo="Administración" />
         <div className="rounded-md border border-warn/40 bg-warn-fill/15 px-4 py-3 text-sm text-warn">
           No tienes permiso para ver esta sección. Solo los administradores pueden acceder.
@@ -55,16 +55,16 @@ export default function CreadorPage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
+    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8">
       <EncabezadoPagina
         titulo="Administración"
-        descripcion="Crea y gestiona sedes, empleados, puntos, supervisores, tipos de documento y usuarios del dashboard. Eliminar solo funciona con registros que nunca se usaron; si ya tienen historial, desactívalos para ocultarlos en las aplicaciones."
+        descripcion="Gestiona sedes, empleados, puntos, supervisores, tipos de documento y usuarios. Eliminar solo funciona con registros sin uso; si ya tienen historial, desactívalos."
       />
 
       {/* Indice de secciones: botones nativos (se alcanzan con Tab y se activan
-          con Enter o Espacio); la activa lleva aria-current y subrayado azul,
+          con Enter o Espacio); la activa lleva aria-current y subrayado verde,
           y en pantallas angostas la fila se desplaza dentro de su contenedor. */}
-      <nav aria-label="Secciones de administración" className="-mt-2 overflow-x-auto border-b border-line">
+      <nav aria-label="Secciones de administración" className="overflow-x-auto border-b border-line">
         <ul className="flex min-w-max gap-1">
           {PESTANAS.map((p) => {
             const activa = pestana === p.id;
@@ -75,7 +75,7 @@ export default function CreadorPage() {
                   aria-current={activa ? "true" : undefined}
                   className={`-mb-px inline-flex min-h-11 items-center whitespace-nowrap border-b-2 px-3 text-sm font-medium transition-colors duration-150 ${
                     activa
-                      ? "border-brand-blue text-ink"
+                      ? "border-ok font-semibold text-ink"
                       : "border-transparent text-muted hover:border-line-strong hover:text-ink"
                   }`}
                 >

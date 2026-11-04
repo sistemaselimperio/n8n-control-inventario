@@ -14,8 +14,8 @@ import { ErrorAdmin, type RolEmpleado } from "@/lib/api";
 export const INPUT =
   "min-h-11 rounded-md border border-line-strong bg-surface px-3 text-sm text-ink disabled:opacity-50";
 export const BOTON_PRIMARIO = claseBoton("primario");
-// Accion secundaria dentro de una fila (Editar, Desactivar...): texto azul de
-// estructura, area de toque de 44px.
+// Accion secundaria dentro de una fila (Editar, Desactivar...): texto de enlace
+// (verde azulado, info), area de toque de 44px.
 export const BOTON_LINK =
   "inline-flex min-h-11 items-center rounded-md px-2.5 text-sm font-medium text-info transition-colors duration-150 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50";
 // Accion destructiva dentro de una fila (Eliminar): fantasma en rojo, 44px.

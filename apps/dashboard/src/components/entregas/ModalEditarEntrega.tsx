@@ -69,7 +69,7 @@ export function ModalEditarEntrega({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-brand-night/50 backdrop-blur-sm px-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-brand-night/50 px-4"
       onClick={guardando ? undefined : onCerrar}
     >
       <div

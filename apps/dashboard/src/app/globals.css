@@ -1,54 +1,69 @@
 @import "tailwindcss";
 
-/* Panel operativo en tema oscuro "bosque": fondo verde muy oscuro, sin azules, de
-   Comercializadora El Imperio, con tres acentos de marca. El dorado es la acción
-   ("resaltador" de lo pendiente, botón primario y anillo de foco), el azul da
-   estructura (enlaces, navegación, bordes) y el verde oficial #3D8E33 marca lo
-   entregado. No sigue prefers-color-scheme: es una herramienta interna de sede.
-   Contrastes WCAG medidos: todo el texto >= 4.5:1 sobre page, surface y surface-2. */
+/* Panel operativo en tema claro "cielo y campo", con los colores del logo de
+   Comercializadora El Imperio: barra superior azul cielo (#123A82) con una franja
+   verde pasto (#3D8E33) debajo, fondo claro calido (#F5F5F0), tarjetas blancas y
+   texto verde casi negro. El verde de marca es el acento de accion (botones,
+   seleccion, "entregado"); el dorado del logo (#F5C542) marca la seccion activa
+   sobre el azul y el ambar #E0A526 lo pendiente. Sin fondos azules en el
+   contenido. No sigue prefers-color-scheme: es una herramienta interna de sede.
+   Contrastes WCAG medidos (todo el texto >= 4.5:1 sobre page, surface y surface-2):
+     ink 13.6 / 14.9 / 12.9 · muted 6.1 / 6.7 / 5.8 · subtle 5.7 / 6.2 / 5.4 ·
+     ok-fg 6.0 / 6.5 / 5.6 · gold-fg y warn 6.3 / 6.9 / 6.0 · danger-fg 6.6 / 7.2 / 6.3 ·
+     info 6.2 / 6.8 / 5.9. Sobre el azul de la barra: blanco 10.8, cielo-ink 7.5,
+     dorado 6.6. Bordes de campos (line-strong) 3.2:1 sobre blanco.
+   Texto sobre relleno: ok-on sobre ok 4.7 (el blanco solo da 4.1), brand-ink sobre
+   dorado 7.3, blanco sobre danger-solid 6.5. */
 @theme {
   /* Fondos y bordes */
-  --color-page: #0b1a12;
-  --color-surface: #12261b;
-  --color-surface-2: #193225;
-  --color-line: #24402f;
-  --color-line-strong: #335a43;
+  --color-page: #f5f5f0;
+  --color-surface: #ffffff;
+  --color-surface-2: #efefe8; /* paso entre la tarjeta blanca y el fondo: zonas, hover, visor */
+  --color-line: #e2e2d8;
+  --color-line-strong: #878a79;
 
   /* Texto (>= 4.5:1 sobre page, surface y surface-2) */
-  --color-ink: #f2f7f3;
-  --color-soft: #ccdcd1;
-  --color-muted: #9db4a5;
-  --color-subtle: #86a08f;
+  --color-ink: #1b2b1e;
+  --color-soft: #34473a;
+  --color-muted: #4d6152;
+  --color-subtle: #526656;
 
   /* Marca */
-  --color-brand-night: #06100b; /* el verde más oscuro: velos de modales */
-  --color-brand-ink: #0b1d45; /* texto sobre dorado: 10.2:1 */
-  --color-brand-blue: #1f56b8; /* estructura: bordes, rellenos, barras */
-  --color-brand-sky: #1f56b8;
-  --color-brand-gold: #f5c542; /* acción: botón primario, resaltador y foco */
-  --color-gold-hover: #f7d264;
-  --color-gold-fg: #f5c542; /* texto dorado sobre el fondo: >= 8.4:1 */
+  --color-brand-night: #081633; /* azul noche del logo: velos de modales */
+  --color-brand-ink: #2b2000; /* texto sobre ambar: 7.3:1 */
+  --color-brand-blue: #1f56b8; /* azul del logo para estructura: barras de graficos, bordes activos */
+  --color-brand-sky: #2a7f86; /* verde azulado para la segunda serie de graficos (4.6:1 sobre blanco) */
+  --color-brand-gold: #e0a526; /* ambar de alerta: relleno de "pendiente / requiere atencion" */
+  --color-gold-hover: #ebb63f;
+  --color-gold-fg: #7a5200; /* texto ambar oscuro sobre claro: >= 5.7:1 */
 
   /* Estados */
   --color-ok: #3d8e33; /* verde oficial de marca, exacto (rellenos y bordes) */
-  --color-ok-hover: #4aa03f;
-  --color-ok-fg: #9cf08c; /* verde brillante para texto y tintes: resalta sobre el fondo verde (>= 10:1) */
+  --color-ok-hover: #4a9f3f;
+  --color-ok-fg: #2a6b22; /* verde oscuro para texto y tintes: >= 5.4:1 */
   --color-ok-on: #06100b; /* texto sobre fondo ok: 4.7:1 (el blanco solo da 4.1:1) */
-  --color-warn: #fbbf24; /* ámbar legible como texto y como borde/tinte */
-  --color-warn-fill: #f5c542; /* relleno de "pendiente / requiere atención" */
-  --color-danger: #ef5a4e; /* bordes y rellenos suaves */
-  --color-danger-fg: #ff8a80; /* texto de error */
-  --color-danger-solid: #c9302c; /* fondo de botón destructivo (texto blanco: 5.3:1) */
-  --color-info: #8db3f5; /* azul claro: enlaces e información sobre oscuro */
+  --color-warn: #7a5200; /* texto de aviso (ambar oscuro, >= 5.7:1) */
+  --color-warn-fill: #e0a526; /* relleno y borde de "pendiente / requiere atencion" */
+  --color-danger: #c0392b; /* bordes y rellenos suaves */
+  --color-danger-fg: #a32a20; /* texto de error */
+  --color-danger-solid: #b3261e; /* fondo de boton destructivo (texto blanco: 6.5:1) */
+  --color-info: #1f56b8; /* azul del logo: informacion y enlaces (6.8:1 sobre blanco) */
+
+  /* Logo: cielo (barra superior), campo (franja bajo la barra) y oro */
+  --color-cielo: #123a82;
+  --color-cielo-hover: #1b4a9c;
+  --color-cielo-ink: #d0d8e8; /* texto secundario sobre cielo: 7.5:1 */
+  --color-campo: #3d8e33;
+  --color-oro: #f5c542; /* dorado del logo: seccion activa sobre cielo (6.6:1) */
 }
 
 @theme inline {
-  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html {
@@ -58,33 +73,37 @@ html {
 body {
   background: var(--color-page);
   color: var(--color-ink);
-  font-family: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
   font-size: 14px;
 }
 
-/* Tipografía: una sola familia (Archivo, eje de ancho variable).
-   Escala: 12 / 14 / 16 / 20 / 28 / 44 px. */
+/* Tipografía: IBM Plex Sans (400 / 500 / 600) y IBM Plex Mono solo para
+   identificadores y cifras de documento. Escala: 12 / 14 / 16 / 22 / 28 px. */
 
-/* Cifras grandes e identificadores de documento: ancho condensado, tabular. */
+/* Cifras grandes e identificadores de documento: mono tabular, nunca mayor a 28px. */
 .cifra {
-  font-variation-settings: "wdth" 72;
-  font-weight: 600;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
-  line-height: 0.95;
+  line-height: 1.1;
 }
 
-/* Título de página: ancho extendido. */
+/* Título de página (22px, semibold). */
 .titular {
-  font-variation-settings: "wdth" 112;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
-/* Anillo de foco visible (oro) para teclado, en todo el panel. */
+/* Anillo de foco visible (verde de marca) para teclado, en todo el panel. */
 :focus-visible {
-  outline: 2px solid var(--color-brand-gold);
+  outline: 2px solid var(--color-ok);
   outline-offset: 2px;
+}
+
+/* Sobre la barra azul el verde casi no se ve (1.9:1): ahi el foco va en dorado. */
+header.bg-cielo :focus-visible {
+  outline-color: var(--color-oro);
 }
 
 /* Todo lo clicable se siente clicable (Tailwind v4 deja cursor: default). */
@@ -96,8 +115,8 @@ select {
 }
 
 ::selection {
-  background: var(--color-brand-gold);
-  color: var(--color-brand-ink);
+  background: var(--color-ok);
+  color: var(--color-ok-on);
 }
 
 /* Barras de scroll discretas, acordes al tema. */

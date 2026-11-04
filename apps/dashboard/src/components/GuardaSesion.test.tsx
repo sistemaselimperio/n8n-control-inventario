@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GuardaSesion } from "./GuardaSesion";
@@ -90,22 +90,65 @@ describe("barra de usuario", () => {
     expect(screen.getByRole("link", { name: "Entregas" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("un supervisor de bodega ve Traslados y Administracion bloqueados (sin enlace)", () => {
-    iniciarSesionDePrueba({ usuario: usuarioDe("supervisor", "bodega") });
+  it("muestra todos los enlaces como pestañas visibles, sin menu desplegable", () => {
+    iniciarSesionDePrueba();
     montar();
-    expect(screen.queryByRole("link", { name: "Administración" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "Traslados" })).toBeNull();
-    expect(screen.getAllByText(", sin acceso")).toHaveLength(2);
+    const esperados: [string, string][] = [
+      ["Entregas", "/entregas"],
+      ["Traslados", "/traslados"],
+      ["Puntos", "/puntos"],
+      ["Ranking", "/ranking"],
+      ["Turnos", "/turnos"],
+      ["Catálogo", "/productos"],
+      ["Administración", "/creador"],
+    ];
+    const nav = within(screen.getByRole("navigation", { name: "Principal" }));
+    for (const [nombre, href] of esperados) {
+      expect(nav.getByRole("link", { name: nombre })).toHaveAttribute("href", href);
+    }
+    // El grupo "Análisis" ya no existe: nada de botones con popup ni menus.
+    expect(screen.queryByRole("button", { name: /Análisis/ })).toBeNull();
+    expect(screen.queryByRole("menu", { name: "Análisis" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /Ranking/ })).toBeNull();
   });
 
-  it("el menu Analisis bloquea Turnos para quien no es admin", async () => {
+  it("marca como activa la pestaña de /puntos/[id]", () => {
+    nav.pathname = "/puntos/p1";
+    iniciarSesionDePrueba();
+    montar();
+    expect(screen.getByRole("link", { name: "Puntos" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Entregas" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("un supervisor de bodega ve bloqueados (sin enlace) Traslados, Puntos, Turnos y Administracion", () => {
     iniciarSesionDePrueba({ usuario: usuarioDe("supervisor", "bodega") });
     montar();
-    await userEvent.click(screen.getByRole("button", { name: /Análisis/ }));
-    expect(screen.getByRole("menuitem", { name: /Ranking/ })).toHaveAttribute("href", "/ranking");
-    expect(screen.getByRole("menuitem", { name: /Turnos/ })).toHaveAttribute("aria-disabled", "true");
-    await userEvent.keyboard("{Escape}");
-    expect(screen.queryByRole("menu", { name: "Análisis" })).toBeNull();
+    for (const nombre of ["Administración", "Traslados", "Puntos", "Turnos"]) {
+      expect(screen.queryByRole("link", { name: nombre })).toBeNull();
+    }
+    expect(screen.getAllByText(", sin acceso")).toHaveLength(4);
+    // Lo que si puede abrir sigue siendo un enlace.
+    expect(screen.getByRole("link", { name: "Ranking" })).toHaveAttribute("href", "/ranking");
+    expect(screen.getByRole("link", { name: "Catálogo" })).toHaveAttribute("href", "/productos");
+  });
+
+  it("un usuario de area traslados puede abrir Puntos pero no Ranking", () => {
+    nav.pathname = "/traslados";
+    iniciarSesionDePrueba({ usuario: usuarioDe("consulta", "traslados") });
+    montar();
+    expect(screen.getByRole("link", { name: "Puntos" })).toHaveAttribute("href", "/puntos");
+    expect(screen.queryByRole("link", { name: "Ranking" })).toBeNull();
+  });
+
+  it("en movil el boton de menu abre y cierra la lista de enlaces", async () => {
+    iniciarSesionDePrueba();
+    montar();
+    const boton = screen.getByRole("button", { name: "Menú de navegación" });
+    expect(boton).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(boton);
+    expect(boton).toHaveAttribute("aria-expanded", "true");
+    await userEvent.click(boton);
+    expect(boton).toHaveAttribute("aria-expanded", "false");
   });
 
   it("muestra nombre, usuario y rol en el menu de usuario", async () => {

@@ -147,6 +147,55 @@ describe("pagina de entregas: filtros de la URL", () => {
   });
 });
 
+describe("pagina de entregas: barra de filtros", () => {
+  const pestana = (nombre: RegExp) =>
+    within(screen.getByRole("group", { name: "Estado" })).getByRole("button", { name: nombre });
+  const filtro = (nombre: string) => screen.getByRole("button", { name: new RegExp(`^${nombre}:`) });
+  async function elegir(nombre: string, opcion: RegExp) {
+    if (!screen.queryByRole("menu", { name: nombre })) await userEvent.click(filtro(nombre));
+    await userEvent.click(within(screen.getByRole("menu", { name: nombre })).getByRole("menuitemradio", { name: opcion }));
+  }
+
+  it("las pestañas de estado muestran su conteo y cambian el filtro de la URL", async () => {
+    montar();
+    await waitFor(() => expect(pestana(/^Todas/)).toHaveTextContent("3"));
+    expect(pestana(/^En revisión/)).toHaveTextContent("1");
+    expect(pestana(/^Sin terminar/)).toHaveTextContent("1");
+    expect(pestana(/^Procesadas/)).toHaveTextContent("1");
+    expect(pestana(/^Todas/)).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(pestana(/^En revisión/));
+    expect(nav.replace).toHaveBeenLastCalledWith(expect.stringContaining("estado=revision"), expect.anything());
+  });
+
+  it("el menu Flujo cambia el filtro de la URL", async () => {
+    montar();
+    await within(tabla()).findByText("100");
+    await elegir("Flujo", /^Remisiones$/);
+    expect(nav.replace).toHaveBeenLastCalledWith(expect.stringContaining("flujo=remisiones"), expect.anything());
+  });
+
+  it("Sede y Fecha viajan al backend; Limpiar filtros los quita", async () => {
+    montar();
+    await within(tabla()).findByText("100");
+    expect(screen.queryByRole("button", { name: "Limpiar filtros" })).toBeNull();
+    await elegir("Sede", /^Sede Centro$/);
+    await waitFor(() =>
+      expect(api.fetchEntregas).toHaveBeenLastCalledWith(expect.objectContaining({ sedeId: "s1" })),
+    );
+    await elegir("Fecha", /^Hoy$/);
+    expect(filtro("Fecha")).toHaveTextContent("Hoy");
+    await waitFor(() =>
+      expect(api.fetchEntregas).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sedeId: "s1", desde: expect.any(String), hasta: expect.any(String) }),
+      ),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Limpiar filtros" }));
+    expect(filtro("Sede")).toHaveTextContent("Todas");
+    expect(filtro("Fecha")).toHaveTextContent("Todas");
+    expect(screen.queryByRole("button", { name: "Limpiar filtros" })).toBeNull();
+  });
+});
+
 describe("pagina de entregas: busqueda y revision", () => {
   it("la busqueda va al backend con debounce y se trae el filtro", async () => {
     montar();

@@ -1,6 +1,6 @@
 // Identificador de un documento (tipo + número, ej. "FEI 10254"): el elemento
-// visual principal de filas y modales. Cifra condensada (.cifra), el tipo en
-// tono apagado y el número en tinta. Sin monoespaciada.
+// visual principal de filas y modales. Cifra tabular (.cifra, IBM Plex Mono), el
+// tipo en tono apagado y el número en tinta.
 
 const TAMANOS = {
   fila: "text-[16px]",

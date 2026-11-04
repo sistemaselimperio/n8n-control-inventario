@@ -51,6 +51,16 @@ const fila = (p: Partial<FilaTrasladoSyscafe>): FilaTrasladoSyscafe => ({
   ...p,
 });
 
+const chip = (grupo: string, nombre: RegExp) =>
+  within(screen.getByRole("group", { name: grupo })).getByRole("button", { name: nombre });
+
+// Filtros de la barra: boton "Fecha: Todas" que abre un menu con opciones.
+const filtro = (nombre: string) => screen.getByRole("button", { name: new RegExp(`^${nombre}:`) });
+async function elegir(nombre: string, opcion: RegExp) {
+  if (!screen.queryByRole("menu", { name: nombre })) await userEvent.click(filtro(nombre));
+  await userEvent.click(within(screen.getByRole("menu", { name: nombre })).getByRole("menuitemradio", { name: opcion }));
+}
+
 const FILAS = [
   fila({ id: "t1", consecutivo: 1, numero_talonario: "A 10", talonario_id: "k1" }),
   fila({
@@ -108,7 +118,7 @@ describe("pagina de traslados: listado", () => {
     const t2 = filasTabla()[1];
     expect(within(t2).getByText("NBR-945")).toBeInTheDocument();
     expect(within(t2).getByText("13/10/2026")).toBeInTheDocument();
-    expect(screen.getByText("4 filas")).toBeInTheDocument();
+    expect(screen.getByText("4 traslados")).toBeInTheDocument();
   });
 
   it("una llegada directa muestra 'Llega directo' y una hoja anulada su motivo", async () => {
@@ -125,7 +135,7 @@ describe("pagina de traslados: listado", () => {
     api.listarTrasladosSyscafe.mockResolvedValue([]);
     montar();
     expect(await screen.findByText("No hay traslados para mostrar.")).toBeInTheDocument();
-    await userEvent.click(screen.getByLabelText("Solo pendientes de Syscafe"));
+    await userEvent.click(chip("Vista", /^Pendiente N° Traslado/));
     expect(await screen.findByText("No hay traslados pendientes de Syscafe.")).toBeInTheDocument();
   });
 
@@ -139,11 +149,17 @@ describe("pagina de traslados: listado", () => {
 });
 
 describe("pagina de traslados: filtros", () => {
+  const hoyLocal = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+
   it("los filtros de servidor viajan a listarTrasladosSyscafe", async () => {
     montar();
     await screen.findByRole("table");
-    await userEvent.selectOptions(screen.getByLabelText("Punto de origen"), "p1");
-    await userEvent.click(screen.getByLabelText("Solo pendientes de Syscafe"));
+    await elegir("Punto", /^Centro$/);
+    await userEvent.click(chip("Vista", /^Pendiente N° Traslado/));
+    await elegir("Fecha", /^Elegir fechas$/);
     await userEvent.type(screen.getByLabelText("Desde"), "2026-10-01");
     await userEvent.type(screen.getByLabelText("Hasta"), "2026-10-31");
     await waitFor(() =>
@@ -154,7 +170,7 @@ describe("pagina de traslados: filtros", () => {
         hasta: "2026-10-31",
       }),
     );
-    await userEvent.click(screen.getByRole("button", { name: "Todas las fechas" }));
+    await elegir("Fecha", /^Todas las fechas$/);
     await waitFor(() =>
       expect(api.listarTrasladosSyscafe).toHaveBeenLastCalledWith({
         puntoId: "p1",
@@ -163,21 +179,53 @@ describe("pagina de traslados: filtros", () => {
         hasta: undefined,
       }),
     );
+    expect(screen.queryByLabelText("Desde")).toBeNull();
   });
 
-  it("estado, empresa y tipo filtran en el cliente", async () => {
+  it("el atajo Hoy filtra desde y hasta el dia de hoy", async () => {
     montar();
     await screen.findByRole("table");
-    await userEvent.selectOptions(screen.getByLabelText("Estado"), "recibido");
+    await elegir("Fecha", /^Hoy$/);
+    expect(filtro("Fecha")).toHaveTextContent("Hoy");
+    expect(screen.queryByRole("menu", { name: "Fecha" })).toBeNull();
+    await waitFor(() =>
+      expect(api.listarTrasladosSyscafe).toHaveBeenLastCalledWith({
+        puntoId: undefined,
+        pendientes: false,
+        desde: hoyLocal(),
+        hasta: hoyLocal(),
+      }),
+    );
+  });
+
+  it("vista, empresa y tipo filtran en el cliente; cada vista muestra su conteo", async () => {
+    montar();
+    await screen.findByRole("table");
+    expect(chip("Vista", /^Recibidos/)).toHaveTextContent("1");
+    await userEvent.click(chip("Vista", /^Recibidos/));
+    expect(chip("Vista", /^Recibidos/)).toHaveAttribute("aria-pressed", "true");
     expect(filasTabla()).toHaveLength(1);
     expect(within(filasTabla()[0]).getByText("V 20")).toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText("Estado"), "");
-    await userEvent.selectOptions(screen.getByLabelText("Empresa"), "A");
+    await userEvent.click(chip("Vista", /^Todos/));
+    await elegir("Empresa", /El Imperio/);
     expect(filasTabla().map((f) => within(f).queryByText(/^[AV] \d+$/)?.textContent)).toEqual(["A 10", "A 11"]);
-    await userEvent.selectOptions(screen.getByLabelText("Empresa"), "");
-    await userEvent.selectOptions(screen.getByLabelText("Tipo"), "directo");
+    await elegir("Empresa", /^Todas$/);
+    await elegir("Tipo", /^Llega directo$/);
     expect(filasTabla()).toHaveLength(1);
     expect(within(filasTabla()[0]).getByText("TP-000003")).toBeInTheDocument();
+  });
+
+  it("Limpiar filtros solo aparece con filtros activos y los quita todos", async () => {
+    montar();
+    await screen.findByRole("table");
+    const total = filasTabla().length;
+    expect(screen.queryByRole("button", { name: "Limpiar filtros" })).toBeNull();
+    await userEvent.click(chip("Vista", /^Recibidos/));
+    await elegir("Tipo", /^Entre puntos$/);
+    await userEvent.click(screen.getByRole("button", { name: "Limpiar filtros" }));
+    expect(filasTabla()).toHaveLength(total);
+    expect(chip("Vista", /^Todos/)).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: "Limpiar filtros" })).toBeNull();
   });
 });
 
