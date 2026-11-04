@@ -45,7 +45,6 @@ import {
   fetchResumenHoy,
   fetchTrasladosPunto,
 } from './api';
-import { CalabazasEncabezado } from './halloween';
 import type { TabsParamList } from './Navegacion';
 import { lugarSesion, tieneAcceso, useSesion, type Sesion } from './SesionContext';
 import {
@@ -711,8 +710,6 @@ export default function PantallaInicio() {
             style={[estilos.encabezado, { paddingTop: insets.top + 14 }]}
           >
             <FondoEncabezado />
-            {/* Calabazas de temporada (solo en Halloween, ver halloween.tsx). */}
-            <CalabazasEncabezado />
 
             <View style={estilos.barraSuperior}>
               <Text style={estilos.marca} numberOfLines={1}>

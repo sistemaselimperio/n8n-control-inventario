@@ -40,7 +40,6 @@ import {
   type Supervisor,
   type UsuarioPunto,
 } from './api';
-import { DecoracionEntrada } from './halloween';
 import PantallaLogin from './PantallaLogin';
 import { SOPORTE, abrirEnlace, estiloEntrada, saludo, useEntrada, useReducirMovimiento } from './PantallaInicio';
 import { guardarRecuerdo, leerRecuerdo, type RecuerdoLogin } from './recuerdoLogin';
@@ -174,9 +173,6 @@ function FondoEntrada() {
           style={StyleSheet.absoluteFill}
         />
       </View>
-
-      {/* Calabazas y resplandor de temporada (solo en Halloween, ver halloween.tsx). */}
-      <DecoracionEntrada />
     </View>
   );
 }
