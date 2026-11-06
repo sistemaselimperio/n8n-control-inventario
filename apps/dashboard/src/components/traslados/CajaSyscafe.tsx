@@ -9,7 +9,7 @@ import { useEffect, useRef, useState, type KeyboardEvent as EventoTeclado } from
 import { toast } from "sonner";
 import { asignarSyscafeDashboard, type FilaTrasladoSyscafe } from "@/lib/api";
 import { Icono } from "@/components/ui";
-import { referencia } from "./compartido";
+import { referencia, SIN_REFERENCIA } from "./compartido";
 
 // Ultimo prefijo guardado en esta pestaña: casi siempre se repite, asi que la
 // siguiente caja ya lo trae puesto.
@@ -72,7 +72,7 @@ export function CajaSyscafe({
     try {
       await asignarSyscafeDashboard(fila.id, nuevo);
       if (nuevo) ultimoPrefijo = prefijo;
-      toast.success(nuevo ? `Número de traslado ${nuevo} guardado en ${referencia(fila)}` : "Número de traslado borrado");
+      toast.success(nuevo ? `Número de traslado ${nuevo} guardado${referencia(fila) === SIN_REFERENCIA ? "" : ` en ${referencia(fila)}`}` : "Número de traslado borrado");
       onGuardado();
       onCerrar();
     } catch (err) {
@@ -98,7 +98,7 @@ export function CajaSyscafe({
     <div
       ref={caja}
       role="dialog"
-      aria-label={`Número de traslado de ${referencia(fila)}`}
+      aria-label={referencia(fila) === SIN_REFERENCIA ? "Número de traslado" : `Número de traslado de ${referencia(fila)}`}
       style={{ left, top }}
       className="fixed z-50 flex rounded-md border border-brand-gold/50 bg-surface p-1.5 shadow-lg shadow-brand-night/30"
     >

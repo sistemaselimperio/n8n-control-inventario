@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { empresaTalonario, fechaCorta, fechaHora, letraTalonario, referencia } from "./compartido";
+import { empresaTalonario, ESTADOS, fechaCorta, fechaHora, letraTalonario, referencia } from "./compartido";
 
 describe("referencia", () => {
   it("usa el numero de talonario si es anulada o tiene talonario_id", () => {
@@ -7,9 +7,21 @@ describe("referencia", () => {
     expect(referencia({ tipo: "traslado", numero_talonario: "A 7", talonario_id: "t1", consecutivo: 3 })).toBe("A 7");
   });
 
-  it("cae al consecutivo TP-000000", () => {
-    expect(referencia({ tipo: "traslado", numero_talonario: "A 7", talonario_id: null, consecutivo: 42 })).toBe("TP-000042");
-    expect(referencia({ tipo: "traslado", numero_talonario: null, talonario_id: null, consecutivo: null })).toBe("TP-000000");
+  it("un traslado desde bodega se identifica por el numero de su documento", () => {
+    const base = { tipo: "traslado" as const, numero_talonario: null, talonario_id: null, consecutivo: 9 };
+    expect(referencia({ ...base, numero_documento: "NPT-1839" })).toBe("NPT-1839");
+    expect(referencia({ ...base, numero_documento: null })).toBe("—");
+  });
+
+  it("sin documento ni hoja de talonario devuelve un guion largo, nunca TP-", () => {
+    expect(referencia({ tipo: "traslado", numero_talonario: "A 7", talonario_id: null, consecutivo: 42 })).toBe("—");
+    expect(referencia({ tipo: "traslado", numero_talonario: null, talonario_id: null, consecutivo: null })).toBe("—");
+  });
+});
+
+describe("ESTADOS", () => {
+  it("incluye el estado anulado de los traslados desde bodega", () => {
+    expect(ESTADOS.anulado).toEqual({ texto: "Anulado", tono: "neutro" });
   });
 });
 

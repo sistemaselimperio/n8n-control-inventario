@@ -476,6 +476,82 @@ describe("productos y traslados", () => {
   });
 });
 
+describe("traslado desde bodega", () => {
+  const pdf = () => new File(["%PDF-1.4"], "NPT 1839.pdf", { type: "application/pdf" });
+  const datos: api.TrasladoBodegaDatos = {
+    numero: "NPT-1839",
+    fecha: "2026-11-02",
+    concepto: "SUGERIDO",
+    origen: "BODEGA VENTAS",
+    punto_destino_id: "p2",
+    elaboro: "YOHANA",
+    items: [{ referencia: "02058", detalle: "C. CONTELAC", empaque: "BULTO", cantidad: 15, precio: 75700 }],
+  };
+
+  it("leerBorradorTrasladoBodega envia multipart con el PDF y devuelve el borrador", async () => {
+    const fetchMock = mockFetch(respuestaJson({ numero: "NPT-1839", items: [], advertencias: [] }));
+    const res = await api.leerBorradorTrasladoBodega(pdf());
+    const { url, init, headers } = ultimaLlamada(fetchMock);
+    expect(url).toBe(`${BASE}/traslados-puntos/desde-bodega/borrador`);
+    expect(init.method).toBe("POST");
+    expect((init.body as FormData).get("archivo")).toBeInstanceOf(File);
+    expect(headers.has("Content-Type")).toBe(false);
+    expect(res.numero).toBe("NPT-1839");
+  });
+
+  it("leerBorradorTrasladoBodega muestra el 422 del backend", async () => {
+    mockFetch(respuestaJson({ detail: "El PDF no tiene texto legible" }, 422));
+    await expect(api.leerBorradorTrasladoBodega(pdf())).rejects.toThrow("El PDF no tiene texto legible");
+  });
+
+  it("enviarTrasladoBodega manda el PDF y los datos revisados como JSON en el campo `datos`", async () => {
+    const fetchMock = mockFetch(respuestaJson({ id: "t1", estado: "en_transito" }, 201));
+    const res = await api.enviarTrasladoBodega(pdf(), datos);
+    const { url, init, headers } = ultimaLlamada(fetchMock);
+    expect(url).toBe(`${BASE}/traslados-puntos/desde-bodega`);
+    expect(init.method).toBe("POST");
+    const cuerpo = init.body as FormData;
+    expect(cuerpo.get("archivo")).toBeInstanceOf(File);
+    expect(JSON.parse(cuerpo.get("datos") as string)).toEqual(datos);
+    expect(headers.has("Content-Type")).toBe(false);
+    expect(res.id).toBe("t1");
+  });
+
+  it("enviarTrasladoBodega muestra el 409 de un traslado ya cargado", async () => {
+    mockFetch(respuestaJson({ detail: "El traslado NPT-1839 ya fue cargado" }, 409));
+    await expect(api.enviarTrasladoBodega(pdf(), datos)).rejects.toThrow("NPT-1839 ya fue cargado");
+  });
+
+  it("editarTrasladoBodega hace PATCH con los datos", async () => {
+    const fetchMock = mockFetch(respuestaJson({ id: "t1" }));
+    await api.editarTrasladoBodega("t1", datos);
+    const { url, init } = ultimaLlamada(fetchMock);
+    expect(url).toBe(`${BASE}/traslados-puntos/t1/desde-bodega`);
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body as string)).toEqual(datos);
+  });
+
+  it("editarTrasladoBodega muestra el 409 de un traslado ya recibido", async () => {
+    mockFetch(respuestaJson({ detail: "Este traslado ya fue recibido y no se puede modificar" }, 409));
+    await expect(api.editarTrasladoBodega("t1", datos)).rejects.toThrow("ya fue recibido");
+  });
+
+  it("anularTrasladoBodega manda el motivo", async () => {
+    const fetchMock = mockFetch(respuestaJson({ id: "t1", estado: "anulado" }));
+    const res = await api.anularTrasladoBodega("t1", "Cantidades mal");
+    const { url, init } = ultimaLlamada(fetchMock);
+    expect(url).toBe(`${BASE}/traslados-puntos/t1/anular`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ motivo: "Cantidades mal" });
+    expect(res.estado).toBe("anulado");
+  });
+
+  it("anularTrasladoBodega muestra el error del backend", async () => {
+    mockFetch(respuestaJson({ detail: "Este traslado ya está anulado" }, 409));
+    await expect(api.anularTrasladoBodega("t1", "x")).rejects.toThrow("ya está anulado");
+  });
+});
+
 describe("administracion (adminFetch)", () => {
   it("GET: sin Content-Type ni body y con no-store", async () => {
     const fetchMock = mockFetch(respuestaJson([]));

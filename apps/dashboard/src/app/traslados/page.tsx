@@ -55,10 +55,12 @@ import {
   letraTalonario,
   ORIGEN_DIRECTO,
   referencia,
+  SIN_REFERENCIA,
 } from "@/components/traslados/compartido";
 import { ModalAnulada } from "@/components/traslados/ModalAnulada";
 import { ModalDetalleTraslado } from "@/components/traslados/ModalDetalleTraslado";
 import { CajaSyscafe } from "@/components/traslados/CajaSyscafe";
+import { ModalTrasladoBodega } from "@/components/traslados/ModalTrasladoBodega";
 
 // Texto sin tildes ni mayusculas, para comparar busquedas.
 const normalizar = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
@@ -74,6 +76,8 @@ function textoBusqueda(f: FilaTrasladoSyscafe): string {
       f.numero_talonario,
       f.punto_origen_nombre,
       f.tipo_traslado === "directo" ? ORIGEN_DIRECTO : "",
+      f.tipo_traslado === "desde_bodega" ? "desde bodega" : "",
+      f.numero_documento,
       f.punto_destino_nombre,
       f.anulado_por_nombre,
       f.motivo,
@@ -97,6 +101,7 @@ type Vista =
   | "novedad_pendiente"
   | "novedad_resuelta"
   | "recibido"
+  | "desde_bodega"
   | "anulada";
 
 type FiltroNovedad = "" | "pendiente" | "resuelta";
@@ -109,8 +114,14 @@ const VISTAS: { valor: Vista; texto: string; tono?: TonoPildora }[] = [
   { valor: "novedad_pendiente", texto: "Novedad pendiente", tono: "error" },
   { valor: "novedad_resuelta", texto: "Novedad resuelta", tono: "ok" },
   { valor: "recibido", texto: "Recibidos", tono: ESTADOS.recibido.tono },
+  { valor: "desde_bodega", texto: "Desde bodega" },
   { valor: "anulada", texto: "Anuladas", tono: ESTADOS.anulada.tono },
 ];
+
+// Un traslado desde bodega siempre trae el numero de su documento (o esta anulado):
+// nunca queda pendiente de numero.
+const sinNumero = (f: FilaTrasladoSyscafe) =>
+  f.tipo !== "anulada" && !f.numero_syscafe && f.tipo_traslado !== "desde_bodega";
 
 export default function TrasladosPage() {
   const { usuario, puedeEditar } = useSesion();
@@ -160,6 +171,7 @@ export default function TrasladosPage() {
   const cerrarSyscafe = useCallback(() => setSyscafe(null), []);
   const [detalleId, setDetalleId] = useState<string | null>(null);
   const [anuladaDetalle, setAnuladaDetalle] = useState<FilaTrasladoSyscafe | null>(null);
+  const [subiendoBodega, setSubiendoBodega] = useState(false);
 
   // El orden (pendientes primero) viene del backend y el filtro lo conserva.
   const porEstado = useMemo(
@@ -190,22 +202,28 @@ export default function TrasladosPage() {
     ? "pendientes"
     : novedad
       ? `novedad_${novedad}`
-      : ((estado || "todos") as Vista);
+      : tipo === "desde_bodega"
+        ? "desde_bodega"
+        : ((estado || "todos") as Vista);
   const elegirVista = (v: Vista) => {
     setSoloPendientes(v === "pendientes");
     setNovedad(v === "novedad_pendiente" ? "pendiente" : v === "novedad_resuelta" ? "resuelta" : "");
-    setEstado(["todos", "pendientes", "novedad_pendiente", "novedad_resuelta"].includes(v) ? "" : v);
+    setTipo(v === "desde_bodega" ? "desde_bodega" : tipo === "desde_bodega" ? "" : tipo);
+    setEstado(
+      ["todos", "pendientes", "novedad_pendiente", "novedad_resuelta", "desde_bodega"].includes(v) ? "" : v,
+    );
   };
   const conteos = useMemo(() => {
     const lista = filas ?? [];
     const porEstadoDe = (e: string) => lista.filter((f) => f.estado === e).length;
     return {
       todos: lista.length,
-      pendientes: lista.filter((f) => !f.numero_syscafe && f.tipo !== "anulada").length,
+      pendientes: lista.filter(sinNumero).length,
       en_transito: porEstadoDe("en_transito"),
       novedad_pendiente: lista.filter((f) => f.novedad_estado === "pendiente").length,
       novedad_resuelta: lista.filter((f) => f.novedad_estado === "resuelta").length,
       recibido: porEstadoDe("recibido"),
+      desde_bodega: lista.filter((f) => f.tipo_traslado === "desde_bodega").length,
       anulada: porEstadoDe("anulada"),
     } satisfies Record<Vista, number>;
   }, [filas]);
@@ -245,6 +263,14 @@ export default function TrasladosPage() {
       <EncabezadoPagina
         titulo="Traslados"
         descripcion="Revisa cada traslado y registra su número de traslado (por ejemplo NBR-945). Haz clic en una fila para ver el detalle."
+        acciones={
+          puedeAsignar ? (
+            <button type="button" onClick={() => setSubiendoBodega(true)} className={claseBoton("primario")}>
+              <Icono nombre="arriba" className="h-4 w-4" />
+              Subir traslado de bodega
+            </button>
+          ) : undefined
+        }
       />
 
       {/* Traslados: titulo con total, vistas como pestañas subrayadas con
@@ -324,7 +350,15 @@ export default function TrasladosPage() {
           />
           <MenuFiltro
             etiqueta="Tipo"
-            valorTexto={tipo === "directo" ? "Llega directo" : tipo === "entre_puntos" ? "Entre puntos" : "Todos"}
+            valorTexto={
+              tipo === "directo"
+                ? "Llega directo"
+                : tipo === "entre_puntos"
+                  ? "Entre puntos"
+                  : tipo === "desde_bodega"
+                    ? "Desde bodega"
+                    : "Todos"
+            }
             activo={Boolean(tipo)}
             valor={tipo}
             onCambio={setTipo}
@@ -332,6 +366,7 @@ export default function TrasladosPage() {
               { valor: "" as const, texto: "Todos" },
               { valor: "entre_puntos" as const, texto: "Entre puntos" },
               { valor: "directo" as const, texto: "Llega directo" },
+              { valor: "desde_bodega" as const, texto: "Desde bodega" },
             ]}
           />
 
@@ -391,7 +426,8 @@ export default function TrasladosPage() {
               <tbody className={CLASE_TBODY}>
                 {visibles.map((fila) => {
                   const anulada = fila.tipo === "anulada";
-                  const pendiente = !anulada && !fila.numero_syscafe;
+                  const pendiente = sinNumero(fila);
+                  const bodega = fila.tipo_traslado === "desde_bodega";
                   const info = ESTADOS[fila.estado] ?? { texto: fila.estado, tono: "neutro" as TonoPildora };
                   return (
                     <tr
@@ -423,6 +459,11 @@ export default function TrasladosPage() {
                           <span className="text-xs text-muted" title={fila.motivo ?? undefined}>
                             {fila.motivo ? `Motivo: ${fila.motivo}` : "—"}
                           </span>
+                        ) : bodega ? (
+                          // El numero del PDF (ej. NPT-1839) no se edita como un Syscafe.
+                          <span className="cifra text-[14px] text-ink">
+                            {fila.numero_syscafe ?? fila.numero_documento ?? "—"}
+                          </span>
                         ) : (
                           <div className="flex items-center gap-2">
                             {fila.numero_syscafe ? (
@@ -438,7 +479,7 @@ export default function TrasladosPage() {
                                   setSyscafe({ fila, ancla: celda.getBoundingClientRect() });
                                 }}
                                 title={fila.numero_syscafe ? "Editar número de traslado" : "Registrar número de traslado"}
-                                aria-label={`${fila.numero_syscafe ? "Editar" : "Registrar"} número de traslado de ${referencia(fila)}`}
+                                aria-label={`${fila.numero_syscafe ? "Editar" : "Registrar"} número de traslado${referencia(fila) === SIN_REFERENCIA ? "" : ` de ${referencia(fila)}`}`}
                                 className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-md transition-colors duration-150 ${
                                   fila.numero_syscafe
                                     ? "text-muted hover:bg-surface-2 hover:text-ink"
@@ -518,6 +559,16 @@ export default function TrasladosPage() {
           fila={syscafe.fila}
           ancla={syscafe.ancla}
           onCerrar={cerrarSyscafe}
+          onGuardado={() => {
+            recargar();
+            recargarActividad();
+          }}
+        />
+      ) : null}
+
+      {subiendoBodega ? (
+        <ModalTrasladoBodega
+          onCerrar={() => setSubiendoBodega(false)}
           onGuardado={() => {
             recargar();
             recargarActividad();

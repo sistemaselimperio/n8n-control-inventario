@@ -109,7 +109,8 @@ describe("CajaSyscafe: guardar y borrar", () => {
     await userEvent.click(screen.getByRole("button", { name: "Guardar número de traslado" }));
     await waitFor(() => expect(onGuardado).toHaveBeenCalledOnce());
     expect(api.asignarSyscafeDashboard).toHaveBeenCalledWith("t1", "TB9-120");
-    expect(toast.success).toHaveBeenCalledWith("Número de traslado TB9-120 guardado en TP-000012");
+    expect(toast.success).toHaveBeenCalledWith("Número de traslado TB9-120 guardado");
+    expect(vi.mocked(toast.success).mock.calls[0][0]).not.toContain("TP-");
     expect(onCerrar).toHaveBeenCalled();
   });
 

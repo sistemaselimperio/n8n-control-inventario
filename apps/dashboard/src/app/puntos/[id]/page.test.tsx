@@ -54,12 +54,14 @@ const fila = (p: Partial<FilaTrasladoSyscafe>): FilaTrasladoSyscafe => ({
 });
 
 const ENVIADOS = [
-  fila({ id: "e1", consecutivo: 11, numero_syscafe: "NBR-11", estado: "recibido" }),
+  fila({ id: "e1", consecutivo: 11, numero_talonario: "A 11", talonario_id: "k11", numero_syscafe: "NBR-11", estado: "recibido" }),
   fila({ id: "e2", consecutivo: 12, numero_syscafe: null, estado: "recibido_con_novedad" }),
 ];
 const RECIBIDOS = [
   fila({
     id: "r1",
+    numero_talonario: "A 21",
+    talonario_id: "k21",
     consecutivo: 21,
     punto_origen_id: "p3",
     punto_origen_nombre: "Sur",
@@ -117,8 +119,9 @@ describe("detalle de un punto", () => {
 
   it("lista los traslados enviados y recibidos con estado y numero Syscafe", async () => {
     montar();
-    expect(await screen.findByText("TP-000011")).toBeInTheDocument();
-    expect(screen.getByText("TP-000021")).toBeInTheDocument();
+    expect(await screen.findByText("A 11")).toBeInTheDocument();
+    expect(screen.getByText("A 21")).toBeInTheDocument();
+    expect(screen.queryByText(/TP-/)).toBeNull();
     expect(screen.getByText("NBR-11")).toBeInTheDocument();
     expect(screen.getByText("Con novedad", { selector: "span.inline-flex" })).toBeInTheDocument();
     expect(api.listarTrasladosSyscafe).toHaveBeenCalledWith({ puntoId: "p1" });
@@ -127,18 +130,18 @@ describe("detalle de un punto", () => {
 
   it("filtra por enviados y recibidos", async () => {
     montar();
-    await screen.findByText("TP-000011");
+    await screen.findByText("A 11");
     await userEvent.click(screen.getByRole("button", { name: "Recibidos" }));
-    expect(screen.queryByText("TP-000011")).toBeNull();
-    expect(screen.getByText("TP-000021")).toBeInTheDocument();
+    expect(screen.queryByText("A 11")).toBeNull();
+    expect(screen.getByText("A 21")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Enviados" }));
-    expect(screen.getByText("TP-000011")).toBeInTheDocument();
-    expect(screen.queryByText("TP-000021")).toBeNull();
+    expect(screen.getByText("A 11")).toBeInTheDocument();
+    expect(screen.queryByText("A 21")).toBeNull();
   });
 
   it("abre el detalle del traslado al hacer clic en una fila", async () => {
     montar();
-    await userEvent.click(await screen.findByText("TP-000011"));
+    await userEvent.click(await screen.findByText("A 11"));
     expect(screen.getByRole("dialog")).toHaveTextContent("detalle e1");
   });
 

@@ -27,6 +27,13 @@ vi.mock("@/lib/SesionProvider", () => ({ useSesion: () => sesion }));
 vi.mock("@/components/traslados/ModalDetalleTraslado", () => ({
   ModalDetalleTraslado: ({ id }: { id: string }) => <div role="dialog">detalle {id}</div>,
 }));
+vi.mock("@/components/traslados/ModalTrasladoBodega", () => ({
+  ModalTrasladoBodega: ({ onCerrar }: { onCerrar: () => void }) => (
+    <div role="dialog" aria-label="Subir traslado de bodega">
+      <button onClick={onCerrar}>cerrar modal bodega</button>
+    </div>
+  ),
+}));
 vi.mock("@/components/traslados/ModalAnulada", () => ({
   ModalAnulada: ({ fila }: { fila: { id: string } }) => <div role="dialog">anulada {fila.id}</div>,
 }));
@@ -126,7 +133,8 @@ describe("pagina de traslados: listado", () => {
     montar();
     await screen.findByRole("table");
     expect(within(filasTabla()[2]).getByText(/Llega directo/)).toBeInTheDocument();
-    expect(within(filasTabla()[2]).getByText("TP-000003")).toBeInTheDocument();
+    expect(within(filasTabla()[2]).getByText(/Peñalisa/)).toBeInTheDocument();
+    expect(screen.queryByText(/TP-/)).toBeNull();
     expect(within(filasTabla()[3]).getByText("Motivo: Hoja danada")).toBeInTheDocument();
     // Una anulada no es "pendiente" de Syscafe ni se puede asignar.
     expect(within(filasTabla()[3]).queryByText("Pendiente")).toBeNull();
@@ -213,7 +221,7 @@ describe("pagina de traslados: filtros", () => {
     await elegir("Empresa", /^Todas$/);
     await elegir("Tipo", /^Llega directo$/);
     expect(filasTabla()).toHaveLength(1);
-    expect(within(filasTabla()[0]).getByText("TP-000003")).toBeInTheDocument();
+    expect(within(filasTabla()[0]).getByText(/Peñalisa/)).toBeInTheDocument();
   });
 
   it("Limpiar filtros solo aparece con filtros activos y los quita todos", async () => {
@@ -255,7 +263,7 @@ describe("pagina de traslados: busqueda", () => {
     await buscar("pendiente");
     await waitFor(() => expect(filasTabla()).toHaveLength(2));
     expect(within(filasTabla()[0]).getByText("A 10")).toBeInTheDocument();
-    expect(within(filasTabla()[1]).getByText("TP-000003")).toBeInTheDocument();
+    expect(within(filasTabla()[1]).getByText(/Peñalisa/)).toBeInTheDocument();
   });
 
   it("sin coincidencias muestra el mensaje y Borrar busqueda restaura la lista", async () => {
@@ -354,10 +362,10 @@ describe("pagina de traslados: novedades", () => {
     expect(chip("Vista", /^Novedad resuelta/)).toHaveTextContent("1");
     await userEvent.click(chip("Vista", /^Novedad pendiente/));
     expect(filasTabla()).toHaveLength(1);
-    expect(within(filasTabla()[0]).getByText("TP-000003")).toBeInTheDocument();
+    expect(within(filasTabla()[0]).getByText(/Peñalisa/)).toBeInTheDocument();
     await userEvent.click(chip("Vista", /^Novedad resuelta/));
     expect(filasTabla()).toHaveLength(1);
-    expect(within(filasTabla()[0]).getByText("TP-000005")).toBeInTheDocument();
+    expect(within(filasTabla()[0]).getByText(/Oeste/)).toBeInTheDocument();
     await userEvent.click(chip("Vista", /^Todos/));
     expect(filasTabla()).toHaveLength(5);
   });
@@ -374,6 +382,96 @@ describe("pagina de traslados: busqueda por consecutivo de la solucion", () => {
     expect(screen.queryByLabelText("Buscar por consecutivo")).toBeNull(); // una sola caja de busqueda
     await userEvent.type(screen.getByLabelText("Buscar traslado"), "npt0012");
     await waitFor(() => expect(filasTabla()).toHaveLength(1));
-    expect(within(filasTabla()[0]).getByText("TP-000009")).toBeInTheDocument();
+    expect(within(filasTabla()[0]).getByText(/Norte/)).toBeInTheDocument();
+    expect(screen.queryByText(/TP-/)).toBeNull();
+  });
+});
+
+describe("pagina de traslados: desde bodega", () => {
+  const BODEGA = [
+    fila({
+      id: "b1",
+      consecutivo: 7,
+      tipo_traslado: "desde_bodega",
+      punto_origen_id: null,
+      punto_origen_nombre: "BODEGA VENTAS",
+      numero_syscafe: "NPT-1839",
+      numero_documento: "NPT-1839",
+      punto_destino_nombre: "Puente de Tierra",
+    }),
+    fila({
+      id: "b2",
+      consecutivo: 8,
+      tipo_traslado: "desde_bodega",
+      punto_origen_id: null,
+      punto_origen_nombre: "BODEGA VENTAS",
+      numero_syscafe: null,
+      numero_documento: "NPT-1900",
+      estado: "anulado",
+      punto_destino_nombre: "Puente de Tierra",
+    }),
+  ];
+
+  beforeEach(() => {
+    api.listarTrasladosSyscafe.mockResolvedValue([...FILAS, ...BODEGA]);
+  });
+
+  it("el boton para subir un traslado de bodega abre el modal", async () => {
+    montar();
+    await screen.findByRole("table");
+    await userEvent.click(screen.getByRole("button", { name: "Subir traslado de bodega" }));
+    expect(screen.getByRole("dialog", { name: "Subir traslado de bodega" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "cerrar modal bodega" }));
+    expect(screen.queryByRole("dialog", { name: "Subir traslado de bodega" })).toBeNull();
+  });
+
+  it("quien no puede escribir no ve el boton", async () => {
+    sesion.puedeEditar = false;
+    montar();
+    await screen.findByRole("table");
+    expect(screen.queryByRole("button", { name: "Subir traslado de bodega" })).toBeNull();
+  });
+
+  it("un supervisor del area bodega tampoco lo ve", async () => {
+    sesion.usuario = { id: "2", usuario: "u", nombre: "U", rol: "supervisor", area: "bodega" };
+    montar();
+    await screen.findByRole("table");
+    expect(screen.queryByRole("button", { name: "Subir traslado de bodega" })).toBeNull();
+  });
+
+  it("la vista Desde bodega muestra solo esos traslados y su conteo", async () => {
+    montar();
+    await screen.findByRole("table");
+    expect(chip("Vista", /^Desde bodega/)).toHaveTextContent("2");
+    await userEvent.click(chip("Vista", /^Desde bodega/));
+    expect(filasTabla()).toHaveLength(2);
+    expect(within(filasTabla()[0]).getByText(/BODEGA VENTAS/)).toBeInTheDocument();
+  });
+
+  it("identifica cada traslado por su numero de documento, sin lapiz de Syscafe", async () => {
+    montar();
+    await screen.findByRole("table");
+    await userEvent.click(chip("Vista", /^Desde bodega/));
+    const [enTransito, anulado] = filasTabla();
+    expect(within(enTransito).getAllByText("NPT-1839").length).toBeGreaterThan(0);
+    expect(within(enTransito).queryByRole("button")).toBeNull();
+    expect(within(anulado).getAllByText("NPT-1900").length).toBeGreaterThan(0);
+    expect(within(anulado).getByText("Anulado")).toBeInTheDocument();
+    // Un anulado no queda como pendiente de numero.
+    expect(within(anulado).queryByText("Pendiente")).toBeNull();
+  });
+
+  it("el filtro Tipo tambien ofrece Desde bodega", async () => {
+    montar();
+    await screen.findByRole("table");
+    await elegir("Tipo", /^Desde bodega$/);
+    expect(filasTabla()).toHaveLength(2);
+  });
+
+  it("los anulados desde bodega no cuentan como pendientes de numero", async () => {
+    montar();
+    await screen.findByRole("table");
+    // Pendientes: t1 y t3 (sin numero); los desde bodega nunca lo estan.
+    expect(chip("Vista", /^Pendiente N° Traslado/)).toHaveTextContent("2");
   });
 });

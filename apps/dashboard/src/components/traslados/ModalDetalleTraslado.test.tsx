@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { SWRConfig } from "swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,9 +9,19 @@ const api = vi.hoisted(() => ({
   resolverNovedadDashboard: vi.fn(),
   asignarSyscafeDashboard: vi.fn(),
   subirReporteSyscafeDashboard: vi.fn(),
+  anularTrasladoBodega: vi.fn(),
 }));
 vi.mock("@/lib/api", () => api);
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock("sonner", () => ({ toast }));
+// El formulario de edicion tiene sus propias pruebas: aqui solo se comprueba que se abre.
+vi.mock("./ModalTrasladoBodega", () => ({
+  ModalTrasladoBodega: ({ traslado }: { traslado?: { id: string } }) => (
+    <div role="dialog" aria-label="Editar traslado de bodega">
+      editando {traslado?.id}
+    </div>
+  ),
+}));
 
 import { ModalDetalleTraslado } from "./ModalDetalleTraslado";
 
@@ -96,5 +107,124 @@ describe("ModalDetalleTraslado: sin constancia ni historial", () => {
     expect(screen.queryByText("Traslado enviado")).toBeNull();
     expect(screen.queryByText("Traslado recibido")).toBeNull();
     expect(screen.queryByAltText("Firma de quien recibe")).toBeNull();
+  });
+});
+
+describe("ModalDetalleTraslado: traslado desde bodega", () => {
+  const bodega = (extra: Record<string, unknown> = {}) =>
+    detalle({
+      tipo: "desde_bodega",
+      estado: "en_transito",
+      numero_talonario: null,
+      talonario_id: null,
+      numero_syscafe: "NPT-1839",
+      numero_documento: "NPT-1839",
+      punto_origen_nombre: "BODEGA VENTAS",
+      transportador_nombre: "",
+      concepto: "SUGERIDO PUENTE 29 OCTUBRE",
+      elaboro: "YOHANA",
+      pdf_url: "https://x/traslados-bodega/t1.pdf",
+      novedad: null,
+      novedad_estado: null,
+      recibido_at: null,
+      recibido_por_nombre: null,
+      firma_recibe_url: null,
+      items: [
+        {
+          id: "i1",
+          producto: "C. CONTELAC 18 P.",
+          marca: "",
+          presentacion: "BULTO",
+          referencia: "02058",
+          precio: 75700,
+          cantidad: 15,
+          cantidad_recibida: null,
+          novedad: null,
+          fecha_vencimiento: null,
+        },
+      ],
+      ...extra,
+    });
+
+  it("muestra referencia y precio de cada producto, el concepto, la bodega y el PDF", async () => {
+    api.fetchTrasladoDetalle.mockResolvedValue(bodega());
+    montar(true);
+    expect(await screen.findByText("02058")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Referencia" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Precio" })).toBeInTheDocument();
+    expect(screen.getByText(/75\.700/)).toBeInTheDocument();
+    expect(screen.getByText("SUGERIDO PUENTE 29 OCTUBRE")).toBeInTheDocument();
+    expect(screen.getAllByText(/BODEGA VENTAS/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: "Ver PDF original" })).toHaveAttribute(
+      "href",
+      "https://x/traslados-bodega/t1.pdf",
+    );
+    expect(screen.queryByText("Transportador")).toBeNull();
+  });
+
+  it("en transito y con permiso ofrece editar y anular", async () => {
+    api.fetchTrasladoDetalle.mockResolvedValue(bodega());
+    montar(true);
+    expect(await screen.findByRole("button", { name: "Editar traslado" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Anular traslado" })).toBeInTheDocument();
+  });
+
+  it.each([
+    ["sin permiso", false, {}],
+    ["ya recibido", true, { estado: "recibido" }],
+    ["anulado", true, { estado: "anulado" }],
+  ])("%s no ofrece editar ni anular", async (_n, permiso, extra) => {
+    api.fetchTrasladoDetalle.mockResolvedValue(bodega(extra));
+    montar(permiso);
+    await screen.findByText("02058");
+    expect(screen.queryByRole("button", { name: "Editar traslado" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Anular traslado" })).toBeNull();
+  });
+
+  it("editar abre el formulario de edicion", async () => {
+    api.fetchTrasladoDetalle.mockResolvedValue(bodega());
+    montar(true);
+    await userEvent.click(await screen.findByRole("button", { name: "Editar traslado" }));
+    expect(screen.getByRole("dialog", { name: "Editar traslado de bodega" })).toHaveTextContent("editando t1");
+  });
+
+  it("anular exige el motivo y lo manda", async () => {
+    api.fetchTrasladoDetalle.mockResolvedValue(bodega());
+    api.anularTrasladoBodega.mockResolvedValue({});
+    montar(true);
+    await userEvent.click(await screen.findByRole("button", { name: "Anular traslado" }));
+    const confirmar = screen.getByRole("button", { name: "Confirmar anulación" });
+    expect(confirmar).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Motivo de la anulación"), "  Cantidades mal  ");
+    expect(confirmar).toBeEnabled();
+    await userEvent.click(confirmar);
+    await waitFor(() => expect(api.anularTrasladoBodega).toHaveBeenCalledWith("t1", "Cantidades mal"));
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  it("si el backend rechaza la anulacion (409) muestra el mensaje", async () => {
+    api.fetchTrasladoDetalle.mockResolvedValue(bodega());
+    api.anularTrasladoBodega.mockRejectedValue(new Error("Este traslado ya fue recibido y no se puede modificar"));
+    montar(true);
+    await userEvent.click(await screen.findByRole("button", { name: "Anular traslado" }));
+    await userEvent.type(screen.getByLabelText("Motivo de la anulación"), "x");
+    await userEvent.click(screen.getByRole("button", { name: "Confirmar anulación" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/ya fue recibido/)));
+  });
+
+  it("un traslado anulado muestra el motivo, quien lo anulo y su numero de documento", async () => {
+    api.fetchTrasladoDetalle.mockResolvedValue(
+      bodega({
+        estado: "anulado",
+        numero_syscafe: null,
+        anulado_motivo: "Cantidades mal",
+        anulado_por: "Marta",
+        anulado_at: "2026-11-03T10:00:00Z",
+      }),
+    );
+    montar(true);
+    expect(await screen.findByText(/Cantidades mal/)).toBeInTheDocument();
+    expect(screen.getByText(/Marta/)).toBeInTheDocument();
+    expect(screen.getAllByText("NPT-1839").length).toBeGreaterThan(0);
   });
 });

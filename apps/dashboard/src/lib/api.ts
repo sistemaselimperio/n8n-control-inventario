@@ -437,7 +437,9 @@ export async function actualizarProducto(
 // en el backend): traslados y hojas anuladas del talonario, pendientes primero.
 // Se llena desde la pagina /traslados.
 // "directo": mercancia que llega del proveedor al punto (sin origen ni despacho).
-export type TipoTraslado = "entre_puntos" | "directo";
+// "desde_bodega": el supervisor sube el PDF del sistema contable y lo envia a un
+// punto (el origen es el texto de una bodega, no un punto).
+export type TipoTraslado = "entre_puntos" | "directo" | "desde_bodega";
 
 export interface FilaTrasladoSyscafe {
   tipo: "traslado" | "anulada";
@@ -463,6 +465,9 @@ export interface FilaTrasladoSyscafe {
   novedad_estado?: "pendiente" | "resuelta" | null;
   // Consecutivo de la solucion (ej. "NPT-1234"); la busqueda de /traslados lo encuentra.
   consecutivo_solucion?: string | null;
+  // Numero del documento contable de un traslado desde bodega (ej. "NPT-1839"); se
+  // conserva aunque el traslado se anule (entonces numero_syscafe queda en null).
+  numero_documento?: string | null;
 }
 
 // desde/hasta: "YYYY-MM-DD" inclusivos (fecha del traslado; en anuladas, la de creacion).
@@ -489,6 +494,10 @@ export interface ItemTrasladoDetalle {
   cantidad_recibida: number | null;
   novedad: string | null;
   fecha_vencimiento: string | null;
+  // Solo en los traslados desde bodega: referencia contable y precio unitario
+  // (la unidad/empaque va en `presentacion`).
+  referencia?: string | null;
+  precio?: number | null;
 }
 
 export interface TrasladoDetalle {
@@ -527,6 +536,15 @@ export interface TrasladoDetalle {
   foto_talonario_url: string | null;
   // Texto libre de la hoja en una llegada directa.
   contenido_texto?: string | null;
+  // Traslado desde bodega: datos del PDF, bodega de origen en texto y anulacion.
+  numero_documento?: string | null;
+  concepto?: string | null;
+  origen_texto?: string | null;
+  elaboro?: string | null;
+  pdf_url?: string | null;
+  anulado_motivo?: string | null;
+  anulado_at?: string | null;
+  anulado_por?: string | null;
   firma_despacha_url: string | null;
   firma_transporta_url: string | null;
   firma_recibe_url: string | null;
@@ -537,7 +555,7 @@ export const fetchTrasladoDetalle = (id: string) => getJson<TrasladoDetalle>(`/t
 
 // Feed de actividad reciente del panel de traslados, en lenguaje simple.
 export interface ActividadTraslado {
-  tipo: "envio" | "recepcion" | "solucion" | "syscafe" | "anulada";
+  tipo: "envio" | "recepcion" | "solucion" | "syscafe" | "anulada" | "anulacion";
   momento: string;
   texto: string;
   traslado_id: string | null;
@@ -597,6 +615,7 @@ interface TrasladoCrudo {
   created_at: string;
   novedad_estado?: "pendiente" | "resuelta" | null;
   consecutivo_solucion?: string | null;
+  numero_documento?: string | null;
 }
 
 const aFilaSyscafe = (t: TrasladoCrudo): FilaTrasladoSyscafe => ({
@@ -618,6 +637,7 @@ const aFilaSyscafe = (t: TrasladoCrudo): FilaTrasladoSyscafe => ({
   anulado_por_nombre: null,
   novedad_estado: t.novedad_estado ?? null,
   consecutivo_solucion: t.consecutivo_solucion ?? null,
+  numero_documento: t.numero_documento ?? null,
 });
 
 export const listarTrasladosRecibidos = async (puntoId: string): Promise<FilaTrasladoSyscafe[]> => {
@@ -678,6 +698,97 @@ export async function subirReporteSyscafeDashboard(trasladoId: string, archivo: 
   });
   if (!res.ok) {
     throw new Error(await mensajeDeError(res, "No se pudo subir el reporte de traslado"));
+  }
+  return res.json();
+}
+
+// --- Traslado desde bodega (PDF "TRASLADO ENTRE BODEGAS" del sistema contable) ---
+// Permisos: admin o supervisor de area todo/traslados (el backend responde 403 si no).
+
+export interface ItemBodegaDatos {
+  referencia: string;
+  detalle: string;
+  empaque: string;
+  cantidad: number;
+  precio: number;
+}
+
+// Lo que el supervisor confirma tras revisar el borrador.
+export interface TrasladoBodegaDatos {
+  numero: string;
+  fecha: string;
+  concepto: string | null;
+  origen: string;
+  punto_destino_id: string;
+  elaboro: string | null;
+  items: ItemBodegaDatos[];
+}
+
+// Borrador que lee el backend del PDF (no se guarda nada). `advertencias` dice
+// que no cuadra (suma contra el total del PDF, renglones ilegibles, numero ya cargado).
+export interface BorradorTrasladoBodega {
+  numero: string;
+  fecha: string | null;
+  concepto: string | null;
+  origen: string | null;
+  destino_texto: string | null;
+  elaboro: string | null;
+  total_documento: number | null;
+  items: ItemBodegaDatos[];
+  advertencias: string[];
+  // Punto sugerido por el nombre del destino; null si no hay uno claro.
+  punto_destino_id: string | null;
+  ya_cargado: boolean;
+}
+
+// Lee el PDF (multipart, campo `archivo`). 422 si no es un PDF con texto o no
+// trae el encabezado/renglones esperados, 413 si pasa de 5 MB.
+export async function leerBorradorTrasladoBodega(archivo: File): Promise<BorradorTrasladoBodega> {
+  const cuerpo = new FormData();
+  cuerpo.append("archivo", archivo);
+  const res = await apiFetch("/traslados-puntos/desde-bodega/borrador", { method: "POST", body: cuerpo });
+  if (!res.ok) {
+    throw new Error(await mensajeDeError(res, "No se pudo leer el PDF"));
+  }
+  return res.json();
+}
+
+// Envia el traslado revisado: el PDF original (se guarda en Storage) y los datos
+// como JSON en el campo `datos`. 409 si ese numero ya fue cargado.
+export async function enviarTrasladoBodega(archivo: File, datos: TrasladoBodegaDatos): Promise<TrasladoDetalle> {
+  const cuerpo = new FormData();
+  cuerpo.append("archivo", archivo);
+  cuerpo.append("datos", JSON.stringify(datos));
+  const res = await apiFetch("/traslados-puntos/desde-bodega", { method: "POST", body: cuerpo });
+  if (!res.ok) {
+    throw new Error(await mensajeDeError(res, "No se pudo enviar el traslado"));
+  }
+  return res.json();
+}
+
+// Corrige un traslado desde bodega mientras sigue en transito (409 si ya lo
+// recibieron o esta anulado).
+export async function editarTrasladoBodega(trasladoId: string, datos: TrasladoBodegaDatos): Promise<TrasladoDetalle> {
+  const res = await apiFetch(`/traslados-puntos/${trasladoId}/desde-bodega`, {
+    method: "PATCH",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(datos),
+  });
+  if (!res.ok) {
+    throw new Error(await mensajeDeError(res, "No se pudo guardar el traslado"));
+  }
+  return res.json();
+}
+
+// Anula un traslado desde bodega que sigue en transito. El motivo es obligatorio.
+export async function anularTrasladoBodega(trasladoId: string, motivo: string): Promise<TrasladoDetalle> {
+  const res = await apiFetch(`/traslados-puntos/${trasladoId}/anular`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ motivo }),
+  });
+  if (!res.ok) {
+    throw new Error(await mensajeDeError(res, "No se pudo anular el traslado"));
   }
   return res.json();
 }

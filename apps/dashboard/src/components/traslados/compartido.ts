@@ -9,17 +9,26 @@ export const ESTADOS: Record<string, { texto: string; tono: TonoPildora }> = {
   recibido: { texto: "Recibido", tono: "ok" },
   recibido_con_novedad: { texto: "Con novedad", tono: "error" },
   anulada: { texto: "Anulada", tono: "neutro" },
+  // Traslado desde bodega anulado por el supervisor antes de que lo recibieran.
+  anulado: { texto: "Anulado", tono: "neutro" },
 };
 
 // Texto del origen cuando la mercancia llega directo del proveedor (sin punto de origen).
 export const ORIGEN_DIRECTO = "Llega directo";
 
 export function referencia(
-  fila: Pick<FilaTrasladoSyscafe, "tipo" | "numero_talonario" | "talonario_id" | "consecutivo">,
+  fila: Pick<FilaTrasladoSyscafe, "tipo" | "numero_talonario" | "talonario_id" | "consecutivo"> &
+    Partial<Pick<FilaTrasladoSyscafe, "numero_documento">>,
 ): string {
+  // Traslado desde bodega: lo identifica el numero de su documento (ej. NPT-1839).
+  if (fila.numero_documento) return fila.numero_documento;
   if (fila.numero_talonario && (fila.tipo === "anulada" || fila.talonario_id)) return fila.numero_talonario;
-  return `TP-${String(fila.consecutivo ?? 0).padStart(6, "0")}`;
+  // Sin numero de documento ni hoja de talonario no hay referencia que mostrar.
+  return SIN_REFERENCIA;
 }
+
+// Texto cuando un traslado no tiene referencia visible.
+export const SIN_REFERENCIA = "—";
 
 // Empresas con talonario propio, por la letra de la hoja (debe coincidir con
 // EMPRESAS_TALONARIO de la app movil, ModalTalonario.tsx).
@@ -52,4 +61,11 @@ export function fechaCorta(iso: string): string {
 
 export function fechaHora(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString() : "—";
+}
+
+// Precio en pesos con separador de miles ("75700" -> "75.700").
+export function formatoPrecio(valor: number | string | null | undefined): string {
+  const n = Number(valor);
+  if (valor == null || valor === "" || !Number.isFinite(n)) return "—";
+  return `$ ${new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 }).format(n)}`;
 }

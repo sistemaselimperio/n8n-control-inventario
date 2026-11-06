@@ -4,15 +4,28 @@
 // para quien puede asignarlos), productos con lo enviado vs. lo recibido (con su estado por
 // producto), novedad y fotos.
 
+import { useState } from "react";
 import useSWR from "swr";
+import { toast } from "sonner";
 import {
+  anularTrasladoBodega,
   fetchTrasladoDetalle,
   type ItemTrasladoDetalle,
   type TrasladoDetalle,
 } from "@/lib/api";
-import { ErrorConReintento, Icono, Pildora, type TonoPildora } from "@/components/ui";
+import { claseBoton, ErrorConReintento, Icono, Pildora, type TonoPildora } from "@/components/ui";
 import { Folio } from "@/components/entregas/Folio";
-import { empresaTalonario, ESTADOS, fechaCorta, fechaHora, ORIGEN_DIRECTO, referencia } from "./compartido";
+import {
+  empresaTalonario,
+  ESTADOS,
+  fechaCorta,
+  fechaHora,
+  formatoPrecio,
+  ORIGEN_DIRECTO,
+  referencia,
+  SIN_REFERENCIA,
+} from "./compartido";
+import { ModalTrasladoBodega } from "./ModalTrasladoBodega";
 import { Dato, ModalBase } from "./ModalBase";
 import { FormSolucionNovedad } from "./FormSolucionNovedad";
 import { SeccionSyscafe } from "./SeccionSyscafe";
@@ -33,12 +46,22 @@ export function ModalDetalleTraslado({
   });
   // Llega directo: no hay quien despache ni transporte, solo firma quien recibe.
   const directo = t?.tipo === "directo";
+  // Desde bodega: PDF del sistema contable que el supervisor envio a un punto.
+  const bodega = t?.tipo === "desde_bodega";
+  const [editando, setEditando] = useState(false);
   const info = t ? (ESTADOS[t.estado] ?? { texto: t.estado, tono: "neutro" as TonoPildora }) : null;
 
   return (
+    <>
     <ModalBase
-      etiqueta={t ? `Traslado ${referencia({ ...t, tipo: "traslado" })}` : "Traslado"}
-      titulo={t ? <Folio tipo="Traslado" numero={referencia({ ...t, tipo: "traslado" })} tamano="modal" /> : "Traslado"}
+      etiqueta={t && referencia({ ...t, tipo: "traslado" }) !== SIN_REFERENCIA ? `Traslado ${referencia({ ...t, tipo: "traslado" })}` : "Traslado"}
+      titulo={
+        t && referencia({ ...t, tipo: "traslado" }) !== SIN_REFERENCIA ? (
+          <Folio tipo="Traslado" numero={referencia({ ...t, tipo: "traslado" })} tamano="modal" />
+        ) : (
+          "Traslado"
+        )
+      }
       onCerrar={onCerrar}
       pildora={info ? <Pildora tono={info.tono}>{info.texto}</Pildora> : undefined}
     >
@@ -61,7 +84,9 @@ export function ModalDetalleTraslado({
               <span className="sr-only">a</span> {t.punto_destino_nombre ?? "—"}
             </Dato>
             <Dato etiqueta="Fecha">{fechaCorta(t.fecha)}</Dato>
-            {directo ? null : <Dato etiqueta="Transportador">{t.transportador_nombre || "—"}</Dato>}
+            {directo || bodega ? null : <Dato etiqueta="Transportador">{t.transportador_nombre || "—"}</Dato>}
+            {bodega && t.concepto ? <Dato etiqueta="Concepto">{t.concepto}</Dato> : null}
+            {bodega && t.elaboro ? <Dato etiqueta="Elaboró">{t.elaboro}</Dato> : null}
             <Dato etiqueta="Creado por">
               {t.creado_por_nombre ?? "—"}, {fechaHora(t.created_at)}
             </Dato>
@@ -70,14 +95,26 @@ export function ModalDetalleTraslado({
             </Dato>
           </div>
 
-          <SeccionSyscafe
-            traslado={t}
-            puedeEditar={puedeAsignar}
-            onCambio={async () => {
-              await mutate();
-              onCambio();
-            }}
-          />
+          {bodega ? (
+            <AccionesBodega
+              t={t}
+              puedeGestionar={puedeAsignar}
+              onEditar={() => setEditando(true)}
+              onAnulado={async () => {
+                await mutate();
+                onCambio();
+              }}
+            />
+          ) : (
+            <SeccionSyscafe
+              traslado={t}
+              puedeEditar={puedeAsignar}
+              onCambio={async () => {
+                await mutate();
+                onCambio();
+              }}
+            />
+          )}
 
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -88,12 +125,14 @@ export function ModalDetalleTraslado({
               <table className="w-full min-w-[640px] text-left text-sm">
                 <thead className="border-b border-line text-xs text-muted">
                   <tr>
+                    {bodega ? <th className="px-3 py-2 font-medium">Referencia</th> : null}
                     <th className="px-3 py-2 font-medium">Producto</th>
-                    <th className="px-3 py-2 font-medium">Marca</th>
-                    <th className="px-3 py-2 font-medium">Presentación</th>
+                    {bodega ? null : <th className="px-3 py-2 font-medium">Marca</th>}
+                    <th className="px-3 py-2 font-medium">{bodega ? "Empaque" : "Presentación"}</th>
+                    {bodega ? <th className="px-3 py-2 text-right font-medium">Precio</th> : null}
                     <th className="px-3 py-2 text-right font-medium">Enviada</th>
                     <th className="px-3 py-2 text-right font-medium">Recibida</th>
-                    <th className="px-3 py-2 font-medium">Vence</th>
+                    {bodega ? null : <th className="px-3 py-2 font-medium">Vence</th>}
                     <th className="px-3 py-2 font-medium">Estado</th>
                   </tr>
                 </thead>
@@ -102,12 +141,16 @@ export function ModalDetalleTraslado({
                     const diferente = it.cantidad_recibida !== null && it.cantidad_recibida !== it.cantidad;
                     return (
                       <tr key={it.id} className="align-top">
+                        {bodega ? <td className="cifra px-3 py-2 text-ink">{it.referencia ?? "—"}</td> : null}
                         <td className="px-3 py-2 text-ink">
                           {it.producto}
                           {it.novedad ? <p className="text-xs text-danger-fg">Novedad: {it.novedad}</p> : null}
                         </td>
-                        <td className="px-3 py-2 text-xs text-muted">{it.marca || "—"}</td>
+                        {bodega ? null : <td className="px-3 py-2 text-xs text-muted">{it.marca || "—"}</td>}
                         <td className="px-3 py-2 text-xs text-muted">{it.presentacion || "—"}</td>
+                        {bodega ? (
+                          <td className="px-3 py-2 text-right tabular-nums text-ink">{formatoPrecio(it.precio)}</td>
+                        ) : null}
                         <td className="px-3 py-2 text-right tabular-nums text-ink">{it.cantidad}</td>
                         <td
                           className={`px-3 py-2 text-right tabular-nums ${diferente ? "font-semibold text-danger-fg" : "text-ink"}`}
@@ -115,9 +158,11 @@ export function ModalDetalleTraslado({
                           {it.cantidad_recibida ?? "—"}
                           {diferente ? <span className="sr-only"> (distinta de lo enviado)</span> : null}
                         </td>
-                        <td className="px-3 py-2 text-xs text-muted">
-                          {it.fecha_vencimiento ? fechaCorta(it.fecha_vencimiento) : "—"}
-                        </td>
+                        {bodega ? null : (
+                          <td className="px-3 py-2 text-xs text-muted">
+                            {it.fecha_vencimiento ? fechaCorta(it.fecha_vencimiento) : "—"}
+                          </td>
+                        )}
                         <td className="px-3 py-2">
                           <EstadoProducto it={it} />
                         </td>
@@ -147,6 +192,112 @@ export function ModalDetalleTraslado({
         </>
       )}
     </ModalBase>
+    {editando && t ? (
+      <ModalTrasladoBodega
+        traslado={t}
+        onCerrar={() => setEditando(false)}
+        onGuardado={async () => {
+          await mutate();
+          onCambio();
+        }}
+      />
+    ) : null}
+    </>
+  );
+}
+
+// Traslado desde bodega: PDF original, anulacion (si la hay) y, mientras sigue en
+// transito, editar o anular (solo quien puede escribir traslados).
+function AccionesBodega({
+  t,
+  puedeGestionar,
+  onEditar,
+  onAnulado,
+}: {
+  t: TrasladoDetalle;
+  puedeGestionar: boolean;
+  onEditar: () => void;
+  onAnulado: () => void | Promise<void>;
+}) {
+  const [anulando, setAnulando] = useState(false);
+  const [motivo, setMotivo] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const editable = puedeGestionar && t.estado === "en_transito";
+
+  const confirmar = async () => {
+    setEnviando(true);
+    try {
+      await anularTrasladoBodega(t.id, motivo.trim());
+      toast.success("Traslado anulado");
+      setAnulando(false);
+      await onAnulado();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo anular el traslado");
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-line bg-surface-2 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {t.pdf_url ? (
+          <a href={t.pdf_url} target="_blank" rel="noopener noreferrer" className={claseBoton("secundario")}>
+            <Icono nombre="factura" className="h-4 w-4" />
+            Ver PDF original
+          </a>
+        ) : null}
+        {editable && !anulando ? (
+          <>
+            <button type="button" onClick={onEditar} className={claseBoton("secundario")}>
+              <Icono nombre="lapiz" className="h-4 w-4" />
+              Editar traslado
+            </button>
+            <button type="button" onClick={() => setAnulando(true)} className={claseBoton("fantasma")}>
+              Anular traslado
+            </button>
+          </>
+        ) : null}
+      </div>
+
+      {anulando ? (
+        <div className="flex flex-col gap-2">
+          <label className="flex flex-col gap-1 text-xs font-medium text-muted">
+            Motivo de la anulación
+            <textarea
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              maxLength={500}
+              rows={2}
+              className="rounded-md border border-line-strong bg-surface p-2 text-sm text-ink"
+            />
+          </label>
+          <span className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={confirmar}
+              disabled={enviando || motivo.trim() === ""}
+              className={claseBoton("peligro")}
+            >
+              {enviando ? "Anulando…" : "Confirmar anulación"}
+            </button>
+            <button type="button" onClick={() => setAnulando(false)} disabled={enviando} className={claseBoton("fantasma")}>
+              Cancelar
+            </button>
+          </span>
+        </div>
+      ) : null}
+
+      {t.estado === "anulado" ? (
+        <div className="flex flex-col gap-1 border-t border-line pt-3">
+          <span className="text-xs font-medium text-muted">Anulado</span>
+          <p className="text-sm text-ink">Motivo: {t.anulado_motivo ?? "—"}</p>
+          <p className="text-xs text-muted">
+            {t.anulado_por ?? "Supervisión"}, {fechaHora(t.anulado_at ?? null)}
+          </p>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
