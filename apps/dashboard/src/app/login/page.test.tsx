@@ -72,7 +72,8 @@ describe("pagina de login", () => {
     await userEvent.type(screen.getByLabelText("Contraseña"), "x");
     await userEvent.click(screen.getByRole("button", { name: "Entrar" }));
     const alerta = await screen.findByRole("alert");
-    expect(alerta).toHaveTextContent("No se pudo conectar con el servidor. Inténtalo de nuevo.");
+    expect(alerta).toHaveTextContent("No se pudo iniciar sesión. Inténtalo de nuevo.");
+    expect(alerta).not.toHaveTextContent("servidor");
     expect(alerta).not.toHaveTextContent("Failed to fetch");
   });
 

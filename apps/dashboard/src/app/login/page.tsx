@@ -20,7 +20,7 @@ function destinoSeguro(siguiente: string | null): string {
 // fetch lanza TypeError cuando no hay conexion con el servidor; cualquier otro
 // error trae el mensaje del backend (credenciales, bloqueo por intentos, etc.).
 function mensajeLogin(err: unknown): string {
-  if (err instanceof TypeError) return "No se pudo conectar con el servidor. Inténtalo de nuevo.";
+  if (err instanceof TypeError) return "No se pudo iniciar sesión. Inténtalo de nuevo.";
   const mensaje = err instanceof Error ? err.message : "";
   if (!mensaje || /usuario o contraseña/i.test(mensaje)) {
     return "Usuario o contraseña incorrectos. Inténtalo de nuevo.";
