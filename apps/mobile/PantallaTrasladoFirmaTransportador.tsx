@@ -1,8 +1,8 @@
 // Paso 2 de crear un traslado: pantalla limpia para el conductor -- resumen
 // de solo lectura (destino, productos) y un unico pad de firma. Apenas firma,
 // se suben las 2 firmas (despacha, ya cargada en NuevoTraslado, y esta),
-// se crea el traslado en el backend y se navega a Resultado con el numero
-// TP-xxxx (consecutivo). Es la UNICA pantalla que de verdad envia algo al
+// se crea el traslado en el backend y se navega a Resultado con la
+// referencia del traslado (hoja del talonario, si la tiene). Es la UNICA pantalla que de verdad envia algo al
 // backend en el flujo de creacion -- NuevoTraslado solo arma el borrador.
 import { useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';

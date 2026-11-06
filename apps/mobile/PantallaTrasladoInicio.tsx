@@ -52,7 +52,7 @@ type Pestana = 'enviados' | 'recibidos';
 
 // Orden de la lista: primero lo que pide atencion (novedad, en camino),
 // despues lo recibido completo; dentro de cada grupo, lo mas nuevo arriba.
-const PRIORIDAD: Record<EstadoTraslado, number> = { recibido_con_novedad: 0, en_transito: 1, recibido: 2 };
+const PRIORIDAD: Record<EstadoTraslado, number> = { recibido_con_novedad: 0, en_transito: 1, recibido: 2, anulado: 3 };
 
 function ordenar(lista: Traslado[]): Traslado[] {
   return [...lista].sort(

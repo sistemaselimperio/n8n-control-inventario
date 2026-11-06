@@ -1,5 +1,5 @@
 // Pantalla final del flujo de creacion -- muestra el numero visible del
-// traslado (la hoja del talonario, o TP- + consecutivo) y vuelve al inicio de la tab
+// traslado (la hoja del talonario; si no tiene, no se muestra numero) y vuelve al inicio de la tab
 // (mismo criterio que PantallaResultado.tsx de Despachos, pero sin
 // EstadoFinal: un traslado creado siempre es el mismo estado de exito, no
 // hay equivalente a "pendiente de revision").
@@ -11,6 +11,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { HeaderTraslado, useTraslado } from './TrasladoContext';
 import { ContenidoBoton, styles, TEXTO_SOBRE_ACENTO } from './tema';
 import type { TrasladosStackParamList } from './Navegacion';
+import { SIN_REFERENCIA } from './api';
 
 type Props = NativeStackScreenProps<TrasladosStackParamList, 'ResultadoTraslado'>;
 
@@ -27,7 +28,9 @@ export default function PantallaTrasladoResultado({ route }: Props) {
           <Ionicons name="checkmark-circle" size={22} color="#34d399" />
           <View style={{ flex: 1 }}>
             <Text style={[styles.badgeEstadoTitulo, { color: '#34d399' }]}>{directo ? 'Llegada registrada' : 'Traslado creado'}</Text>
-            <Text style={styles.badgeEstadoMensaje}>{referencia}</Text>
+            {referencia && referencia !== SIN_REFERENCIA ? (
+              <Text style={styles.badgeEstadoMensaje}>{referencia}</Text>
+            ) : null}
           </View>
         </View>
 

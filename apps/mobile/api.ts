@@ -750,7 +750,8 @@ export async function loginPunto(pin: string, usuarioId: string): Promise<Usuari
   return res.json();
 }
 
-export type EstadoTraslado = 'en_transito' | 'recibido' | 'recibido_con_novedad';
+// 'anulado': solo en los traslados desde bodega; el supervisor lo anulo antes de que se recibiera.
+export type EstadoTraslado = 'en_transito' | 'recibido' | 'recibido_con_novedad' | 'anulado';
 
 // Estado de la novedad de un traslado ya recibido con diferencia -- ver
 // app/models/traslado_punto.py. 'pendiente' apenas se registra la recepcion
@@ -767,13 +768,20 @@ export interface ItemTraslado {
   cantidad: number;
   // ISO YYYY-MM-DD leido del talonario; null si el producto no trae vencimiento.
   fecha_vencimiento?: string | null;
+  // Solo en los traslados desde bodega (PDF del sistema contable): referencia
+  // y precio unitario; la unidad/empaque viene en `presentacion`.
+  referencia?: string | null;
+  precio?: number | null;
   // null hasta que el punto destino confirma la recepcion.
   cantidad_recibida: number | null;
   novedad: string | null;
 }
 
-/** 'entre_puntos': despacho de un punto a otro. 'directo': llega del proveedor al punto (sin origen). */
-export type TipoTraslado = 'entre_puntos' | 'directo';
+/**
+ * 'entre_puntos': despacho de un punto a otro. 'directo': llega del proveedor al punto (sin origen).
+ * 'desde_bodega': lo envia el supervisor desde el dashboard con el PDF del sistema contable.
+ */
+export type TipoTraslado = 'entre_puntos' | 'directo' | 'desde_bodega';
 
 export interface Traslado {
   id: string;
@@ -791,12 +799,19 @@ export interface Traslado {
   // backend) -- null en los traslados creados antes de este campo.
   numero_talonario?: string | null;
   // Talonario (configurado por el punto) del que salio la hoja -- null en los
-  // traslados anteriores al talonario por punto; ahi se sigue mostrando TP-xxxxxx.
+  // traslados anteriores al talonario por punto; ahi la referencia queda en blanco ("—").
   talonario_id?: string | null;
   // Foto del talonario de la que se leyo el traslado (null en los anteriores).
   foto_talonario_url?: string | null;
   // Texto libre de la hoja en una llegada directa (null si no trae).
   contenido_texto?: string | null;
+  // Traslado desde bodega: numero del documento (ej. NPT-1839), concepto, quien lo
+  // elaboro y el PDF original (URL publica). En ese tipo punto_origen_nombre es el
+  // texto de la bodega de origen.
+  numero_documento?: string | null;
+  concepto?: string | null;
+  elaboro?: string | null;
+  pdf_url?: string | null;
   transportador_nombre: string;
   fecha: string;
   observaciones: string | null;
@@ -841,20 +856,38 @@ export interface Traslado {
   reporte_syscafe_por?: string | null;
 }
 
+/** Texto cuando un traslado no tiene referencia visible. */
+export const SIN_REFERENCIA = '—';
+
 /**
  * Referencia visible de un traslado: la hoja del talonario ("A 6305") si el
- * traslado salio de un talonario configurado, o el consecutivo "TP-000012" en
- * los anteriores. Un solo lugar para no repetir la regla en cada pantalla.
+ * traslado salio de un talonario configurado, o el numero de documento (NPT-1839) en los
+ * traslados desde bodega; sin ninguno devuelve "—" (el consecutivo no se muestra). Un solo lugar para no repetir la regla en cada pantalla.
  */
-export function referenciaTraslado(t: Pick<Traslado, 'consecutivo' | 'talonario_id' | 'numero_talonario'>): string {
+export function referenciaTraslado(
+  t: Pick<Traslado, 'consecutivo' | 'talonario_id' | 'numero_talonario'> & Partial<Pick<Traslado, 'numero_documento'>>
+): string {
+  // Desde bodega: lo identifica el numero de su documento (NPT-1839).
+  if (t.numero_documento) return t.numero_documento;
   if (t.talonario_id && t.numero_talonario) return t.numero_talonario;
-  return `TP-${String(t.consecutivo).padStart(6, '0')}`;
+  return SIN_REFERENCIA;
 }
 
 /** Texto del origen de un traslado: "Llega directo" si vino del proveedor, o el nombre del punto. */
 export function origenTraslado(t: { tipo?: TipoTraslado | null; punto_origen_nombre?: string | null }): string {
   if (t.tipo === 'directo') return 'Llega directo';
+  // Desde bodega: hoy solo existe una bodega de origen.
+  if (t.tipo === 'desde_bodega') return 'Bodega Ventas';
   return t.punto_origen_nombre ?? '—';
+}
+
+/** Precio en pesos con separador de miles: 75700 -> "$ 75.700". */
+export function formatearPrecio(valor: number | string | null | undefined): string {
+  const n = Number(valor);
+  if (valor == null || valor === '' || !Number.isFinite(n)) return '';
+  const [entero, decimales] = Math.abs(n).toFixed(Number.isInteger(n) ? 0 : 2).split('.');
+  const miles = entero.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${n < 0 ? '-' : ''}$ ${miles}${decimales ? `,${decimales}` : ''}`;
 }
 
 /** Etiqueta del numero Syscafe junto a la referencia. Al operador se le muestra

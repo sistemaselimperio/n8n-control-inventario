@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { fetchTrasladosPunto, type Traslado } from './api';
+import { fetchTrasladosPunto, origenTraslado, type Traslado } from './api';
 import NumerosTraslado from './NumerosTraslado';
 import { mensajeError } from './errorMessages';
 import { AvisoRol } from './ResumenTraslado';
@@ -52,9 +52,15 @@ function TarjetaPorRecibir({ traslado, onRecibir }: { traslado: Traslado; onReci
         <View style={{ gap: 2 }}>
           <Text style={estilos.etiqueta}>Viene de</Text>
           <Text style={estilos.origen} numberOfLines={1}>
-            {traslado.punto_origen_nombre ?? '—'}
+            {origenTraslado(traslado)}
           </Text>
         </View>
+
+        {traslado.concepto ? (
+          <Text style={estilos.concepto} numberOfLines={2}>
+            {traslado.concepto}
+          </Text>
+        ) : null}
 
         <View style={estilos.metadatos}>
           <View style={estilos.metadato}>
@@ -199,6 +205,7 @@ const estilos = StyleSheet.create({
   pildoraTexto: { color: AMARILLO, fontSize: 12, fontFamily: FUENTE_BODY_SEMI },
   etiqueta: { color: NEUTRAL_500, fontSize: 11.5, fontFamily: FUENTE_BODY_SEMI, textTransform: 'uppercase' },
   origen: { color: TEXTO_PRIMARIO, fontSize: 18, fontFamily: FUENTE_DISPLAY },
+  concepto: { color: NEUTRAL_400, fontSize: 13, fontFamily: FUENTE_BODY },
   metadatos: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   metadato: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   metadatoTexto: { color: NEUTRAL_400, fontSize: 12.5, fontFamily: FUENTE_BODY },

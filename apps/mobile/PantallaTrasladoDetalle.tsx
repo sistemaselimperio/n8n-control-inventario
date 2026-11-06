@@ -9,7 +9,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { etiquetaSyscafe, fetchTrasladoPunto, origenTraslado, referenciaTraslado, type EstadoTraslado, type Traslado } from './api';
+import {
+  etiquetaSyscafe,
+  fetchTrasladoPunto,
+  formatearPrecio,
+  origenTraslado,
+  referenciaTraslado,
+  SIN_REFERENCIA,
+  type EstadoTraslado,
+  type Traslado,
+} from './api';
+import DocumentoBodega from './DocumentoBodega';
 import { mensajeError } from './errorMessages';
 import FirmasTraslado from './FirmasTraslado';
 import ReporteSyscafe from './ReporteSyscafe';
@@ -31,6 +41,7 @@ export const ESTADO_TRASLADO: Record<
   en_transito: { texto: 'En tránsito', color: '#fbbf24', fondo: 'rgba(251,191,36,0.14)', icono: 'car-outline' },
   recibido: { texto: 'Recibido', color: VERDE, fondo: 'rgba(52,211,153,0.14)', icono: 'checkmark-circle-outline' },
   recibido_con_novedad: { texto: 'Con novedad', color: ROJO, fondo: 'rgba(248,113,113,0.14)', icono: 'alert-circle-outline' },
+  anulado: { texto: 'Anulado', color: '#9ca3af', fondo: 'rgba(156,163,175,0.14)', icono: 'close-circle-outline' },
 };
 
 export default function PantallaTrasladoDetalle({ route }: Props) {
@@ -135,7 +146,13 @@ export default function PantallaTrasladoDetalle({ route }: Props) {
         ) : null}
 
         <ResumenTraslado
-          numero={`${referenciaTraslado(traslado)} · ${etiquetaSyscafe(traslado)}`}
+          numero={
+            traslado.tipo === 'desde_bodega'
+              ? referenciaTraslado(traslado)
+              : referenciaTraslado(traslado) === SIN_REFERENCIA
+              ? etiquetaSyscafe(traslado)
+              : `${referenciaTraslado(traslado)} · ${etiquetaSyscafe(traslado)}`
+          }
           origen={origenTraslado(traslado)}
           destino={traslado.punto_destino_nombre ?? '—'}
           transportador={traslado.transportador_nombre}
@@ -148,10 +165,14 @@ export default function PantallaTrasladoDetalle({ route }: Props) {
             marca: item.marca ?? '',
             presentacion: item.presentacion ?? '',
             fechaVencimiento: item.fecha_vencimiento,
+            referencia: item.referencia,
+            precio: item.precio,
           }))}
           observaciones={traslado.observaciones ?? ''}
           mostrarProductos={!recibido}
         />
+
+        <DocumentoBodega traslado={traslado} />
 
         {/* Recepcion: enviado vs recibido por producto. Solo existe una vez
             que el destino confirmo. */}
@@ -161,7 +182,15 @@ export default function PantallaTrasladoDetalle({ route }: Props) {
             {items.map((item) => {
               const llegaron = item.cantidad_recibida ?? item.cantidad;
               const completo = llegaron >= item.cantidad && !item.novedad;
-              const detalle = [item.marca, item.presentacion, textoVencimiento(item.fecha_vencimiento)].filter(Boolean).join(' · ');
+              const detalle = [
+                item.referencia ? `Ref. ${item.referencia}` : '',
+                item.marca,
+                item.presentacion,
+                textoVencimiento(item.fecha_vencimiento),
+                formatearPrecio(item.precio),
+              ]
+                .filter(Boolean)
+                .join(' · ');
               return (
                 <View key={item.id} style={estilos.filaRecibido}>
                   <Ionicons
@@ -205,8 +234,8 @@ export default function PantallaTrasladoDetalle({ route }: Props) {
 
         <FirmasTraslado
           firmas={
-            traslado.tipo === 'directo'
-              ? // Llega directo: solo firma quien recibe.
+            traslado.tipo === 'directo' || traslado.tipo === 'desde_bodega'
+              ? // Llega directo o desde bodega: solo firma quien recibe.
                 [{ clave: 'recibe', titulo: 'Recibe', quien: traslado.punto_destino_nombre ?? '', url: traslado.firma_recibe_url }]
               : [
                   { clave: 'despacha', titulo: 'Despacha', quien: traslado.punto_origen_nombre ?? '', url: traslado.firma_despacha_url },

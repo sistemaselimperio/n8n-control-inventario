@@ -11,7 +11,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { fetchTrasladoPunto, etiquetaSyscafe, referenciaTraslado, registrarRecepcion, subirFirmaTraslado, type ItemTraslado, type Traslado } from './api';
+import {
+  fetchTrasladoPunto,
+  etiquetaSyscafe,
+  formatearPrecio,
+  origenTraslado,
+  referenciaTraslado,
+  SIN_REFERENCIA,
+  registrarRecepcion,
+  subirFirmaTraslado,
+  type ItemTraslado,
+  type Traslado,
+} from './api';
+import DocumentoBodega from './DocumentoBodega';
 import EvitarTeclado from './EvitarTeclado';
 import { esErrorTrasladoYaRecibido, mensajeError, MENSAJE_TRASLADO_YA_RECIBIDO } from './errorMessages';
 import CampoFirma from './CampoFirma';
@@ -127,7 +139,15 @@ function TarjetaProductoRecepcion({
   onElegirCompleto: (completo: boolean) => void;
   onEditarObservacion: () => void;
 }) {
-  const detalle = [item.marca, item.presentacion, textoVencimiento(item.fecha_vencimiento)].filter(Boolean).join(' · ');
+  const detalle = [
+    item.referencia ? `Ref. ${item.referencia}` : '',
+    item.marca,
+    item.presentacion,
+    textoVencimiento(item.fecha_vencimiento),
+    formatearPrecio(item.precio),
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const cantidadValida = cantidadEsValida(linea, item);
 
   return (
@@ -320,8 +340,14 @@ export default function PantallaTrasladoRecepcion({ route }: Props) {
           />
 
           <ResumenTraslado
-            numero={`${referenciaTraslado(traslado)} · ${etiquetaSyscafe(traslado)}`}
-            origen={traslado.punto_origen_nombre ?? '—'}
+            numero={
+              traslado.tipo === 'desde_bodega'
+                ? referenciaTraslado(traslado)
+                : referenciaTraslado(traslado) === SIN_REFERENCIA
+                ? etiquetaSyscafe(traslado)
+                : `${referenciaTraslado(traslado)} · ${etiquetaSyscafe(traslado)}`
+            }
+            origen={origenTraslado(traslado)}
             destino={traslado.punto_destino_nombre ?? punto?.nombre ?? '—'}
             transportador={traslado.transportador_nombre}
             talonario={traslado.talonario_id ? null : traslado.numero_talonario}
@@ -333,10 +359,14 @@ export default function PantallaTrasladoRecepcion({ route }: Props) {
               marca: item.marca ?? '',
               presentacion: item.presentacion ?? '',
               fechaVencimiento: item.fecha_vencimiento,
+              referencia: item.referencia,
+              precio: item.precio,
             }))}
             observaciones={traslado.observaciones ?? ''}
             mostrarProductos={false}
           />
+
+          <DocumentoBodega traslado={traslado} />
 
           <View style={estilos.encabezado}>
             <Text style={styles.etiquetaSeccion}>Confirmar lo recibido</Text>

@@ -7,6 +7,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
+import { formatearPrecio } from './api';
 import { formatearFechaLarga, textoVencimiento } from './SelectorFecha';
 import {
   ACENTO,
@@ -27,6 +28,9 @@ export interface ItemResumen {
   producto: string;
   marca: string;
   presentacion: string;
+  // Solo traslados desde bodega.
+  referencia?: string | null;
+  precio?: number | null;
   // ISO YYYY-MM-DD; ausente/vacio si el producto no tiene vencimiento.
   fechaVencimiento?: string | null;
 }
@@ -73,7 +77,7 @@ export default function ResumenTraslado({
   observaciones,
   mostrarProductos = true,
 }: {
-  // Consecutivo ya formateado (TP-000012) -- solo existe una vez guardado.
+  // Referencia ya formateada (hoja del talonario o numero de documento) -- solo existe una vez guardado.
   numero?: string;
   origen: string;
   destino: string;
@@ -147,7 +151,15 @@ export default function ResumenTraslado({
         </Text>
       </View>
       {mostrarProductos ? items.map((item) => {
-        const detalle = [item.marca.trim(), item.presentacion.trim(), textoVencimiento(item.fechaVencimiento)].filter(Boolean).join(' · ');
+        const detalle = [
+          item.referencia ? `Ref. ${item.referencia}` : '',
+          item.marca.trim(),
+          item.presentacion.trim(),
+          textoVencimiento(item.fechaVencimiento),
+          formatearPrecio(item.precio),
+        ]
+          .filter(Boolean)
+          .join(' · ');
         return (
           <View key={item.key} style={estilos.filaProducto}>
             <View style={estilos.cantidadCaja}>

@@ -3,25 +3,43 @@
 // Se usa en Enviados/Recibidos y Por recibir.
 
 import { StyleSheet, Text, View } from 'react-native';
-import { referenciaTraslado, type Traslado } from './api';
+import { referenciaTraslado, SIN_REFERENCIA, type Traslado } from './api';
 import { ACENTO, FUENTE_BODY_SEMI, FUENTE_DISPLAY_SEMI, NEUTRAL_500, NEUTRAL_700, TEXTO_PRIMARIO } from './tema';
 
 export default function NumerosTraslado({
   traslado,
 }: {
-  traslado: Pick<Traslado, 'consecutivo' | 'talonario_id' | 'numero_talonario' | 'numero_syscafe'>;
+  traslado: Pick<Traslado, 'consecutivo' | 'talonario_id' | 'numero_talonario' | 'numero_syscafe'> &
+    Partial<Pick<Traslado, 'tipo' | 'numero_documento'>>;
 }) {
-  // Los traslados viejos sin hoja de talonario muestran su consecutivo (TP-000123).
-  const conHoja = Boolean(traslado.talonario_id && traslado.numero_talonario);
+  // Desde bodega: un solo numero, el del documento (NPT-1839).
+  if (traslado.tipo === 'desde_bodega') {
+    return (
+      <View style={estilos.fila}>
+        <View style={estilos.bloque}>
+          <Text style={estilos.rotulo}>Traslado</Text>
+          <Text style={[estilos.valor, { color: ACENTO }]} numberOfLines={1}>
+            {traslado.numero_documento ?? traslado.numero_syscafe ?? '—'}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+  // Los traslados viejos sin hoja de talonario no tienen referencia: solo se muestra el numero Syscafe.
+  const conHoja = Boolean(traslado.talonario_id && traslado.numero_talonario) && referenciaTraslado(traslado) !== SIN_REFERENCIA;
   return (
     <View style={estilos.fila}>
-      <View style={estilos.bloque}>
-        <Text style={estilos.rotulo}>{conHoja ? 'Talonario' : 'Consecutivo'}</Text>
-        <Text style={estilos.valor} numberOfLines={1}>
-          {referenciaTraslado(traslado)}
-        </Text>
-      </View>
-      <View style={estilos.separador} />
+      {conHoja ? (
+        <>
+          <View style={estilos.bloque}>
+            <Text style={estilos.rotulo}>Talonario</Text>
+            <Text style={estilos.valor} numberOfLines={1}>
+              {referenciaTraslado(traslado)}
+            </Text>
+          </View>
+          <View style={estilos.separador} />
+        </>
+      ) : null}
       <View style={estilos.bloque}>
         <Text style={estilos.rotulo}>Traslado</Text>
         {traslado.numero_syscafe ? (
