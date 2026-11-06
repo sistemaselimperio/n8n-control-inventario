@@ -63,6 +63,7 @@ export function ModalDetalleTraslado({
         )
       }
       onCerrar={onCerrar}
+      ancho="max-w-6xl"
       pildora={info ? <Pildora tono={info.tono}>{info.texto}</Pildora> : undefined}
     >
       {error ? (

@@ -213,7 +213,7 @@ export function ModalDetalleEntrega({
         aria-modal="true"
         aria-labelledby={idTitulo}
         tabIndex={-1}
-        className="flex h-full w-full flex-col overflow-hidden bg-surface outline-none sm:h-auto sm:max-h-[88vh] sm:max-w-[880px] sm:rounded-lg sm:border sm:border-line"
+        className="flex h-full w-full flex-col overflow-hidden bg-surface outline-none sm:h-auto sm:max-h-[88vh] sm:max-w-6xl sm:rounded-lg sm:border sm:border-line"
         onClick={(ev) => ev.stopPropagation()}
       >
         {/* Encabezado: folio y estado a la izquierda, acciones a la derecha. */}
