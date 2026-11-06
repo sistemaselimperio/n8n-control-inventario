@@ -657,9 +657,9 @@ async def test_syscafe_traslado_inexistente(pool, conn):
     "otro, referencia",
     [
         ({"numero_talonario": "A 6305", "talonario_id": TALONARIO_ID, "consecutivo": 7}, "A 6305"),
-        ({"numero_talonario": None, "talonario_id": None, "consecutivo": 7}, "TP-000007"),
-        ({"numero_talonario": "viejo", "talonario_id": None, "consecutivo": 12}, "TP-000012"),
-        (None, "otro traslado"),
+        ({"numero_talonario": None, "talonario_id": None, "consecutivo": 7}, "a otro traslado"),
+        ({"numero_talonario": "viejo", "talonario_id": None, "consecutivo": 12}, "a otro traslado"),
+        (None, "a otro traslado"),
     ],
 )
 async def test_syscafe_duplicado_nombra_el_otro_traslado(pool, conn, otro, referencia):
@@ -668,6 +668,7 @@ async def test_syscafe_duplicado_nombra_el_otro_traslado(pool, conn, otro, refer
     with pytest.raises(tp.SyscafeDuplicado) as exc:
         await tp.asignar_numero_syscafe(TRASLADO, "NBR-945")
     assert "NBR-945" in str(exc.value) and referencia in str(exc.value)
+    assert "TP-" not in str(exc.value)
 
 
 # ---------------------------------------------------------------------------
@@ -891,7 +892,10 @@ async def test_listar_historial_pide_solo_los_eventos_del_punto(pool, conn):
     (_, _, args) = conn.sql_ejecutado("from logs l")[0]
     assert args == (
         TRASLADO, "traslado_punto_creado", "traslado_punto_recibido", "traslado_punto_novedad", "llegada_directa_registrada",
+        "traslado_bodega_creado", "traslado_bodega_editado", "traslado_bodega_anulado",
     )
+    # El actor puede ser un usuario del dashboard (traslados desde bodega).
+    assert "usuarios_dashboard" in conn.sql_ejecutado("from logs l")[0][1]
 
 
 def _fila_actividad(tipo, **extra):
@@ -923,6 +927,12 @@ def _fila_actividad(tipo, **extra):
         (_fila_actividad("syscafe"), "Supervisión quitó el Syscafe de A 6305"),
         (_fila_actividad("anulada", detalle="hoja dañada", destino=None), "Se anuló la hoja A 6305 de CFC: hoja dañada"),
         (_fila_actividad("anulada", origen=None, destino=None), "Se anuló la hoja A 6305 de —"),
+        (
+            _fila_actividad("envio", origen="BODEGA VENTAS", referencia="NPT-1839", tipo_traslado="desde_bodega"),
+            "BODEGA VENTAS envió NPT-1839 a BDG",
+        ),
+        (_fila_actividad("anulacion", actor="Ana", detalle="Error de digitación", referencia="NPT-1839"), "Ana anuló NPT-1839: Error de digitación"),
+        (_fila_actividad("anulacion", referencia="NPT-1839"), "Supervisión anuló NPT-1839"),
     ],
 )
 async def test_listar_actividad_redacta_cada_tipo_en_lenguaje_simple(pool, conn, fila, texto):
@@ -948,3 +958,25 @@ async def test_listar_actividad_toma_el_nombre_de_quien_soluciono_del_supervisor
     (_, sql, _) = conn.sql_ejecutado("union all")[0]
     assert "left join usuarios_dashboard ud on ud.id = t.solucionado_por_usuario" in sql
     assert "coalesce(s.nombre, ud.nombre)" in sql
+
+
+async def test_listar_actividad_usa_el_numero_del_documento_y_la_bodega_de_origen_en_texto(pool, conn):
+    conn.responder("fetch", "union all", [])
+    await tp.listar_actividad(10)
+    (_, sql, _) = conn.sql_ejecutado("union all")[0]
+    assert "t.numero_documento" in sql  # referencia de un traslado desde bodega
+    assert "coalesce(po.nombre, t.origen_texto)" in sql
+    assert "t.anulado_at" in sql  # rama de anulaciones
+
+
+async def test_listar_syscafe_muestra_la_bodega_de_origen_en_texto(pool, conn):
+    await tp.listar_traslados_syscafe(None, False)
+    (_, sql, _) = conn.sql_ejecutado("from traslados_puntos t")[0]
+    assert "coalesce(po.nombre, t.origen_texto)" in sql
+    assert "t.numero_documento" in sql
+
+
+async def test_listar_syscafe_pendientes_excluye_los_traslados_anulados(pool, conn):
+    await tp.listar_traslados_syscafe(None, True)
+    (_, sql, _) = conn.sql_ejecutado("from traslados_puntos t")[0]
+    assert "t.estado <> 'anulado'" in sql

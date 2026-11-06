@@ -513,7 +513,7 @@ create index if not exists idx_traslados_puntos_talonario
 alter table traslados_puntos add column if not exists tipo text not null default 'entre_puntos';
 alter table traslados_puntos drop constraint if exists traslados_puntos_tipo_check;
 alter table traslados_puntos add constraint traslados_puntos_tipo_check
-    check (tipo in ('entre_puntos', 'directo'));
+    check (tipo in ('entre_puntos', 'directo', 'desde_bodega'));
 alter table traslados_puntos alter column punto_origen_id drop not null;
 -- Sustituye el check inline original (origen <> destino), que Postgres nombro
 -- automaticamente (traslados_puntos_check); se busca por definicion para no
@@ -536,6 +536,7 @@ alter table traslados_puntos add constraint traslados_puntos_origen_tipo_check
     check (
         (tipo = 'entre_puntos' and punto_origen_id is not null and punto_origen_id <> punto_destino_id)
         or (tipo = 'directo' and punto_origen_id is null)
+        or (tipo = 'desde_bodega' and punto_origen_id is null)
     );
 
 -- Numero del traslado en Syscafe (sistema contable, ej. "NBR-945"): lo registra
@@ -655,6 +656,36 @@ alter table usuarios_dashboard add constraint usuarios_dashboard_area_check
 -- (ver resolver_novedad en app/services/traslados_puntos.py). `solucionado_por`
 -- (supervisores de la app movil) queda para las novedades historicas.
 alter table traslados_puntos add column if not exists solucionado_por_usuario uuid references usuarios_dashboard(id);
+
+-- Traslado "desde bodega": el supervisor sube desde el dashboard el PDF
+-- "TRASLADO ENTRE BODEGAS" del sistema contable y lo envia a un punto, que lo
+-- recibe item por item en la app movil (tipo 'desde_bodega', ver
+-- app/services/traslados_bodega.py). No hay punto de origen ni talonario: la
+-- bodega de origen es texto del PDF y quien lo crea es un usuario del
+-- dashboard (creado_por, que es del usuario de punto, queda null). El numero
+-- del documento (ej. NPT-1839) va en numero_syscafe, unico, para bloquear
+-- cargas repetidas; al anular se libera ese campo y numero_documento conserva
+-- el numero para mostrarlo.
+alter table traslados_puntos alter column creado_por drop not null;
+alter table traslados_puntos drop constraint if exists traslados_puntos_creador_check;
+alter table traslados_puntos add constraint traslados_puntos_creador_check
+    check (creado_por is not null or tipo = 'desde_bodega');
+alter table traslados_puntos add column if not exists creado_por_usuario uuid references usuarios_dashboard(id);
+alter table traslados_puntos add column if not exists numero_documento text;
+alter table traslados_puntos add column if not exists concepto text;
+alter table traslados_puntos add column if not exists origen_texto text;
+alter table traslados_puntos add column if not exists elaboro text;
+alter table traslados_puntos add column if not exists pdf_url text;
+-- 'anulado': el supervisor lo anulo (con motivo) antes de que se recibiera.
+alter table traslados_puntos drop constraint if exists traslados_puntos_estado_check;
+alter table traslados_puntos add constraint traslados_puntos_estado_check
+    check (estado in ('en_transito', 'recibido', 'recibido_con_novedad', 'anulado'));
+alter table traslados_puntos add column if not exists anulado_motivo text;
+alter table traslados_puntos add column if not exists anulado_at timestamptz;
+alter table traslados_puntos add column if not exists anulado_por text;
+-- Referencia contable y precio del renglon (la unidad/empaque va en `presentacion`).
+alter table traslado_punto_items add column if not exists referencia text;
+alter table traslado_punto_items add column if not exists precio numeric(14, 2);
 
 -- Realtime de Supabase: sin esto el dashboard no recibe push de cambios,
 -- solo podria hacer polling. Falla silenciosamente (DO block) si ya estaban

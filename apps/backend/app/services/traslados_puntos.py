@@ -498,6 +498,9 @@ async def registrar_recepcion(traslado_id: str, payload: RecepcionTraslado) -> d
     traslado = await pool.fetchrow("select * from traslados_puntos where id = $1::uuid", traslado_id)
     if traslado is None:
         raise TrasladoNoEncontrado("Traslado no encontrado")
+    if traslado.get("estado") == "anulado":
+        # Un traslado desde bodega anulado por el supervisor ya no se recibe.
+        raise TrasladoYaRecibido("Este traslado fue anulado")
 
     items_actuales = await pool.fetch(
         "select * from traslado_punto_items where traslado_id = $1::uuid", traslado_id
@@ -704,13 +707,12 @@ async def asignar_numero_syscafe(traslado_id: str, valor: str | None, por: str |
             valor,
             traslado_id,
         )
+        # Sin hoja de talonario no hay numero visible que citar (el consecutivo no se muestra).
         if otro is not None and otro["talonario_id"] and otro["numero_talonario"]:
-            referencia = otro["numero_talonario"]
-        elif otro is not None:
-            referencia = f"TP-{otro['consecutivo']:06d}"
+            destino = f"al traslado {otro['numero_talonario']}"
         else:
-            referencia = "otro traslado"
-        raise SyscafeDuplicado(f"El número Syscafe {valor} ya está asignado al traslado {referencia}") from exc
+            destino = "a otro traslado"
+        raise SyscafeDuplicado(f"El número Syscafe {valor} ya está asignado {destino}") from exc
     if actualizado is None:
         raise TrasladoNoEncontrado("Traslado no encontrado")
     items = await pool.fetch(
@@ -823,7 +825,7 @@ async def listar_traslados_syscafe(
         " and ($3::date is null or a.created_at::date <= $3::date)"
     )
     if pendientes:
-        filtro_t += " and t.numero_syscafe is null"
+        filtro_t += " and t.numero_syscafe is null and t.estado <> 'anulado'"
         anuladas = ""
     else:
         anuladas = f"""
@@ -835,7 +837,7 @@ async def listar_traslados_syscafe(
                 null::text as punto_destino_nombre, 'anulada' as estado,
                 a.created_at::date as fecha, a.created_at, a.motivo, ua.nombre as anulado_por_nombre,
                 null::text as tipo_traslado, null::text as novedad_estado,
-                null::text as consecutivo_solucion
+                null::text as consecutivo_solucion, null::text as numero_documento
             from talonario_hojas_anuladas a
             join talonarios_punto tp on tp.id = a.talonario_id
             left join puntos po on po.id = tp.punto_id
@@ -846,10 +848,11 @@ async def listar_traslados_syscafe(
         f"""
         select * from (
             select 'traslado' as tipo, t.id, t.consecutivo, t.numero_talonario, t.talonario_id,
-                t.numero_syscafe, t.punto_origen_id, po.nombre as punto_origen_nombre,
+                t.numero_syscafe, t.punto_origen_id, coalesce(po.nombre, t.origen_texto) as punto_origen_nombre,
                 t.punto_destino_id, pd.nombre as punto_destino_nombre, t.estado, t.fecha,
                 t.created_at, null::text as motivo, null::text as anulado_por_nombre,
-                t.tipo as tipo_traslado, t.novedad_estado, t.consecutivo_solucion
+                t.tipo as tipo_traslado, t.novedad_estado, t.consecutivo_solucion,
+                t.numero_documento
             from traslados_puntos t
             left join puntos po on po.id = t.punto_origen_id
             left join puntos pd on pd.id = t.punto_destino_id
@@ -875,19 +878,21 @@ async def listar_traslados_syscafe(
 
 async def listar_historial(traslado_id: str) -> list[dict]:
     """Historial de un traslado para el expediente del dashboard: solo los
-    eventos que hizo el punto (creacion, recepcion y novedad), del mas antiguo
+    eventos que hizo el punto (creacion, recepcion y novedad) o, en un traslado
+    desde bodega, el supervisor (alta, edicion y anulacion), del mas antiguo
     al mas reciente, con el nombre de quien los hizo y del punto. Sale de `logs`
     (append-only), no de columnas del traslado."""
     pool = await get_pool()
     filas = await pool.fetch(
         """
         select l.evento, l."timestamp" as momento, l.resultado, l.detalle,
-            u.nombre as actor_nombre, p.nombre as punto_nombre
+            coalesce(u.nombre, ud.nombre) as actor_nombre, p.nombre as punto_nombre
         from logs l
         left join usuarios_punto u on u.id::text = l.actor_id
+        left join usuarios_dashboard ud on ud.id::text = l.actor_id
         left join puntos p on p.id::text = l.sede_id
         where l.entidad_tipo = 'traslado_punto' and l.entidad_id = $1
-            and l.evento in ($2, $3, $4, $5)
+            and l.evento in ($2, $3, $4, $5, $6, $7, $8)
         order by l."timestamp" asc
         """,
         traslado_id,
@@ -895,6 +900,9 @@ async def listar_historial(traslado_id: str) -> list[dict]:
         EventoLog.TRASLADO_PUNTO_RECIBIDO.value,
         EventoLog.TRASLADO_PUNTO_NOVEDAD.value,
         EventoLog.LLEGADA_DIRECTA_REGISTRADA.value,
+        EventoLog.TRASLADO_BODEGA_CREADO.value,
+        EventoLog.TRASLADO_BODEGA_EDITADO.value,
+        EventoLog.TRASLADO_BODEGA_ANULADO.value,
     )
     return [dict(fila) for fila in filas]
 
@@ -906,21 +914,22 @@ async def listar_actividad(limite: int = 50) -> list[dict]:
     propia. Cada rama trae a lo sumo `limite` filas; el recorte final es global."""
     pool = await get_pool()
     ref = (
-        "case when t.talonario_id is not null and t.numero_talonario is not null"
-        " then t.numero_talonario else 'TP-' || lpad(t.consecutivo::text, 6, '0') end"
+        "case when t.numero_documento is not null then t.numero_documento"
+        " when t.talonario_id is not null and t.numero_talonario is not null"
+        " then t.numero_talonario else '—' end"
     )
     filas = await pool.fetch(
         f"""
         select * from (
             (select 'envio' as tipo, t.created_at as momento, t.id as traslado_id, {ref} as referencia,
-                po.nombre as origen, pd.nombre as destino, null::text as actor, null::text as detalle,
+                coalesce(po.nombre, t.origen_texto) as origen, pd.nombre as destino, null::text as actor, null::text as detalle,
                 t.estado, t.tipo as tipo_traslado
             from traslados_puntos t
             left join puntos po on po.id = t.punto_origen_id
             left join puntos pd on pd.id = t.punto_destino_id
             order by t.created_at desc limit $1)
             union all
-            (select 'recepcion', t.recibido_at, t.id, {ref}, po.nombre, pd.nombre, ur.nombre, null, t.estado,
+            (select 'recepcion', t.recibido_at, t.id, {ref}, coalesce(po.nombre, t.origen_texto), pd.nombre, ur.nombre, null, t.estado,
                 t.tipo
             from traslados_puntos t
             left join puntos po on po.id = t.punto_origen_id
@@ -930,7 +939,7 @@ async def listar_actividad(limite: int = 50) -> list[dict]:
             where t.recibido_at is not null and t.tipo <> 'directo'
             order by t.recibido_at desc limit $1)
             union all
-            (select 'solucion', t.solucionado_at, t.id, {ref}, po.nombre, pd.nombre, coalesce(s.nombre, ud.nombre),
+            (select 'solucion', t.solucionado_at, t.id, {ref}, coalesce(po.nombre, t.origen_texto), pd.nombre, coalesce(s.nombre, ud.nombre),
                 t.consecutivo_solucion, t.estado, t.tipo
             from traslados_puntos t
             left join puntos po on po.id = t.punto_origen_id
@@ -940,13 +949,21 @@ async def listar_actividad(limite: int = 50) -> list[dict]:
             where t.solucionado_at is not null
             order by t.solucionado_at desc limit $1)
             union all
-            (select 'syscafe', t.numero_syscafe_at, t.id, {ref}, po.nombre, pd.nombre, t.numero_syscafe_por,
+            (select 'syscafe', t.numero_syscafe_at, t.id, {ref}, coalesce(po.nombre, t.origen_texto), pd.nombre, t.numero_syscafe_por,
                 t.numero_syscafe, t.estado, t.tipo
             from traslados_puntos t
             left join puntos po on po.id = t.punto_origen_id
             left join puntos pd on pd.id = t.punto_destino_id
             where t.numero_syscafe_at is not null
             order by t.numero_syscafe_at desc limit $1)
+            union all
+            (select 'anulacion', t.anulado_at, t.id, {ref}, coalesce(po.nombre, t.origen_texto), pd.nombre, t.anulado_por,
+                t.anulado_motivo, t.estado, t.tipo
+            from traslados_puntos t
+            left join puntos po on po.id = t.punto_origen_id
+            left join puntos pd on pd.id = t.punto_destino_id
+            where t.anulado_at is not null
+            order by t.anulado_at desc limit $1)
             union all
             (select 'anulada', a.created_at, null::uuid, tp.letra || ' ' || a.numero, po.nombre, null,
                 ua.nombre, a.motivo, 'anulada', null
@@ -977,6 +994,10 @@ async def listar_actividad(limite: int = 50) -> list[dict]:
         elif f["tipo"] == "solucion":
             consecutivo = f" ({f['detalle']})" if f["detalle"] else ""
             texto = f"Supervisión resolvió la novedad de {ref_txt}{consecutivo}"
+        elif f["tipo"] == "anulacion":
+            quien = f["actor"] or "Supervisión"
+            motivo = f": {f['detalle']}" if f["detalle"] else ""
+            texto = f"{quien} anuló {ref_txt}{motivo}"
         elif f["tipo"] == "syscafe":
             quien = f["actor"] or "Supervisión"
             if f["detalle"]:

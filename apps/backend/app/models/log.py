@@ -53,6 +53,12 @@ class EventoLog(StrEnum):
     # Se subio el reporte de traslado generado por Syscafe (una sola vez, no se
     # puede reemplazar) -- ver subir_reporte_syscafe en app/services/traslados_puntos.py.
     TRASLADO_PUNTO_REPORTE_SYSCAFE = "traslado_punto_reporte_syscafe"
+    # Traslado "desde bodega" (PDF del sistema contable que el supervisor sube
+    # desde el dashboard): alta, edicion y anulacion mientras sigue en transito
+    # -- ver app/services/traslados_bodega.py.
+    TRASLADO_BODEGA_CREADO = "traslado_bodega_creado"
+    TRASLADO_BODEGA_EDITADO = "traslado_bodega_editado"
+    TRASLADO_BODEGA_ANULADO = "traslado_bodega_anulado"
     # Alta o cambio hecho desde la pantalla /creador del dashboard (sedes,
     # empleados, puntos, supervisores, tipos de documento) -- el detalle dice
     # que se hizo; nunca incluye PIN ni hash. Ver app/services/usuarios.py.

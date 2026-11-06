@@ -45,6 +45,21 @@ async def sincronizar_producto(conn: asyncpg.Connection, descripcion: str) -> No
     )
 
 
+async def sincronizar_producto_con_codigo(conn: asyncpg.Connection, codigo: str, nombre: str) -> None:
+    """Variante de `sincronizar_producto` para cuando el codigo ya viene
+    separado del nombre (ej. el PDF de traslado desde bodega trae la referencia
+    en su propia columna). Misma regla: la primera descripcion que trajo el
+    codigo gana, no se pisa despues."""
+    codigo, nombre = codigo.strip(), nombre.strip()
+    if not codigo or not nombre:
+        return
+    await conn.execute(
+        "insert into productos (codigo, nombre) values ($1, $2) on conflict (codigo) do nothing",
+        codigo,
+        nombre,
+    )
+
+
 async def eliminar_producto(producto_id: str) -> None:
     """Borra un producto del catalogo. No hay FKs hacia `productos` (entrega_items
     guarda la descripcion tal cual), asi que el historial no se afecta. OJO: el

@@ -385,13 +385,12 @@ async def test_syscafe_repetido_en_otro_traslado_se_rechaza_nombrando_la_hoja(pg
     assert (await fila_traslado(pg, dos["id"]))["numero_syscafe"] is None
 
 
-async def test_syscafe_repetido_nombra_tp_consecutivo_si_el_otro_no_tiene_talonario(pg, esc):
+async def test_syscafe_repetido_sin_talonario_dice_otro_traslado(pg, esc):
     uno = await despachar(esc, "A 6300")
     await pg.execute("update traslados_puntos set talonario_id = null, numero_talonario = null where id = $1::uuid", uno["id"])
     dos = await despachar(esc, "A 6300")
     await tp.asignar_numero_syscafe(uno["id"], "NBR-945")
-    consecutivo = (await fila_traslado(pg, uno["id"]))["consecutivo"]
-    with pytest.raises(tp.SyscafeDuplicado, match=f"TP-{consecutivo:06d}"):
+    with pytest.raises(tp.SyscafeDuplicado, match="a otro traslado"):
         await tp.asignar_numero_syscafe(dos["id"], "NBR-945")
 
 

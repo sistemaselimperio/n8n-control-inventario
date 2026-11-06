@@ -1,0 +1,53 @@
+                                                                                                                          TRASLADO ENTRE BODEGAS
+                                                                                                                          PUENTE DE TIERRA No:
+  Nit: 74439231-1                                                                                         _7LK0LMND                N PT - 1839
+
+  Concepto     SUGERIDO PUENTE 29 OCTUBRE                                                                    Pág:     1            Nov-02-2026
+  VERIFICAR MERCANCIA Y CANTIDADES, SE CARGARA AL INVENTARIO COMO INDICA EL TRASLADO.
+
+
+  Referencia         Detalle                                                                  Emb.           Cant             Precio
+
+ 1476              25-4-24 NUTRIMON BULTO                                                                       5.00              140,000.00
+ 52546             ABONO ORGANICO ABOB                                                                         11.00                19,800.00
+ 16113             C. CERDOS ENGORDE P. BULTO                                                                   5.00                72,000.00
+ 16164             C. CONEJOS P X K KILO                                                                      100.00                 2,700.00
+ 02058             C. CONTELAC 18 P. BULTO                                                                     15.00                75,700.00
+ 2503              C. MAXI BROILER PIGMENTO C. IND BULTO                                                        3.00              107,000.00
+ 6111              C. MAXI HUEVO PIGMENTO C BULTO                                                               3.00                83,100.00
+ 16521             C. MAXI-BROILER C. X KILO KILO                                                              40.00                 2,900.00
+ 16776             C. MAXI-LECHE 75-18 P. BULTO                                                                15.00                84,400.00
+ 17133             C. POLLO INICIACION C. X KILO KILO                                                          40.00                 2,500.00
+ 18765             CALFOS PAZ DEL RIO POLVO X 50 BULTO                                                         10.00                43,000.00
+ 02237             CERDO FINALIZADOR NARANJA X40K BULTO                                                         5.00                85,600.00
+ 02235             CERDO LEVANTE 1 NARANJA X 40K BULTO                                                         15.00                87,600.00
+ 02231             CREMOSA FD BULTO X 40 BULTO                                                                  5.00                63,200.00
+ 02695             F. LECHE STANDAR 70 P. BULTO                                                                15.00                76,000.00
+ 03375             F. LECHE STANDARD 75 P BULTO                                                                10.00                84,500.00
+ 02709             F. LECHE STANDARD FORMULA 1 P. BULTO                                                        15.00                92,200.00
+ 03644             MEGA FORZA SUPLEMENTO GANADERO BULTO                                                         5.00                60,500.00
+ 03407             MIRRINGO GATICOS X1KG KILO                                                                  20.00                 9,300.00
+ 57831             MIRRINGO ORIGINAL ADULTO X 1 KG KILO                                                        20.00                 8,800.00
+ 57882             MIRRINGO ORIGINAL ADULTO X LIBRA LIBRA                                                      20.00                 4,850.00
+ 13259             MIX MENORES X 40KG BULTO                                                                    10.00              121,000.00
+ 31485             NUTRIESENCIALES N X 46 KG BULTO                                                             10.00              112,000.00
+ 68592             POTREROS 31-8-8-2-3 BULTO                                                                   10.00              151,500.00
+ 03463             SAL M/DA 12% X 10 KILOS KILO                                                                12.00                18,200.00
+ 76701             SAL M/DA 6% LONA X 10KL KILO                                                                10.00                18,000.00
+ 76956             SAL M/DA 8% LONA X 10 KL KILO                                                               10.00                18,000.00
+
+  Bodega:         BODEGA VENTAS                                Peso                  Totales                439.00
+  Destino:        BODEGA PUENTE DE TIERRA
+
+
+                        0114
+LEIDY NATALI
+BODEGA VENTAS                                              BODEGA PUENTE DE TIERRA
+
+
+    Elaboró                  Revisó                    Aprobó
+
+  YOHANA
+pendiente arreglar traslado viene. traslado de cerdo
+engorde p contegral y  es cerdo engorde  linea
+náranja

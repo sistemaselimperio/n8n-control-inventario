@@ -18,6 +18,9 @@ class EstadoTrasladoPunto(StrEnum):
     # Alguna linea llego con menos cantidad de la enviada, o se cargo una
     # novedad (general o por item) -- ver registrar_recepcion.
     RECIBIDO_CON_NOVEDAD = "recibido_con_novedad"
+    # Solo en los traslados "desde bodega": el supervisor lo anulo (con motivo)
+    # mientras seguia en transito -- ver anular_desde_bodega.
+    ANULADO = "anulado"
 
 
 class ItemTrasladoCrear(BaseModel):
@@ -236,3 +239,79 @@ class AsignarSyscafeDashboard(BaseModel):
     # validador de pydantic: un ValueError ahi responderia el 422 con `detail`
     # como lista y el movil necesita un texto.
     numero_syscafe: str | None = None
+
+
+class ItemDesdeBodega(BaseModel):
+    """Renglon del PDF de traslado entre bodegas, ya revisado por el supervisor.
+    La referencia es texto: conserva los ceros a la izquierda ("02058")."""
+
+    referencia: str
+    detalle: str
+    empaque: str = ""
+    cantidad: int = Field(gt=0)
+    precio: float = Field(ge=0)
+
+    @field_validator("referencia")
+    @classmethod
+    def _referencia_valida(cls, v: str) -> str:
+        texto = v.strip()
+        if not texto or len(texto) > 30:
+            raise ValueError("La referencia es obligatoria (máximo 30 caracteres)")
+        return texto
+
+    @field_validator("detalle")
+    @classmethod
+    def _detalle_valido(cls, v: str) -> str:
+        texto = " ".join(v.split()).upper()
+        if not texto or len(texto) > 200:
+            raise ValueError("El detalle es obligatorio (máximo 200 caracteres)")
+        return texto
+
+    @field_validator("empaque")
+    @classmethod
+    def _empaque_valido(cls, v: str) -> str:
+        return " ".join(v.split()).upper()[:30]
+
+
+class TrasladoDesdeBodegaDatos(BaseModel):
+    """Datos que el supervisor confirma tras revisar el borrador del PDF (alta
+    y edicion de un traslado "desde bodega"). `numero` es el del documento
+    contable (ej. "NPT-1839"); se normaliza y valida en el servicio."""
+
+    numero: str
+    fecha: date
+    concepto: str | None = None
+    # Bodega de origen tal como la dice el PDF (texto libre, no es un punto).
+    origen: str
+    punto_destino_id: str
+    elaboro: str | None = None
+    items: list[ItemDesdeBodega] = Field(min_length=1)
+
+    @field_validator("origen")
+    @classmethod
+    def _origen_valido(cls, v: str) -> str:
+        texto = " ".join(v.split())
+        if not texto:
+            raise ValueError("La bodega de origen es obligatoria")
+        return texto
+
+    @field_validator("concepto", "elaboro")
+    @classmethod
+    def _texto_opcional(cls, v: str | None) -> str | None:
+        return " ".join((v or "").split()) or None
+
+
+class AnularTraslado(BaseModel):
+    """Payload de POST /traslados-puntos/{id}/anular -- el motivo es obligatorio."""
+
+    motivo: str
+
+    @field_validator("motivo")
+    @classmethod
+    def _motivo_valido(cls, v: str) -> str:
+        texto = v.strip()
+        if not texto:
+            raise ValueError("El motivo de la anulación es obligatorio")
+        if len(texto) > 500:
+            raise ValueError("El motivo es demasiado largo (máximo 500 caracteres)")
+        return texto

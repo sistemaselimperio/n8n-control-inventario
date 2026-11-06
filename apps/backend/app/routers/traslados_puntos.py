@@ -9,18 +9,21 @@ ahi si son dos flujos con entidad propia bien grande cada uno.
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from pydantic import ValidationError
 
 from app.db import get_pool
 from app.models.empleado import PinNuevo
 from app.models.punto import PinLoginPunto, PuntoActualizar, PuntoCrear, UsuarioPuntoActualizar, UsuarioPuntoCrear
 from app.models.talonario import HojaAnular, TalonarioConfigurar
 from app.models.traslado_punto import (
+    AnularTraslado,
     AsignarSyscafeDashboard,
     ExtraerTalonario,
     LlegadaDirectaCrear,
     RecepcionTraslado,
     SolucionNovedadDashboard,
+    TrasladoDesdeBodegaDatos,
     TrasladoPuntoCrear,
     normalizar_numero_syscafe,
 )
@@ -61,6 +64,13 @@ from app.services.traslados_puntos import (
     subir_reporte_syscafe,
 )
 from app.services.storage_evidencia import StorageNoDisponible
+from app.services.traslados_bodega import (
+    PdfTrasladoInvalido,
+    anular_desde_bodega,
+    crear_desde_bodega,
+    editar_desde_bodega,
+    generar_borrador,
+)
 from app.services.vision import ExtraccionFallida
 from app.services.usuarios import (
     DatoInvalido,
@@ -241,8 +251,9 @@ async def login_pin_punto(payload: PinLoginPunto) -> dict:
 
 
 _SELECT_TRASLADOS = """
-    select t.*, po.nombre as punto_origen_nombre, pd.nombre as punto_destino_nombre,
-        coalesce(s.nombre, ud.nombre) as solucionado_por_nombre, uc.nombre as creado_por_nombre,
+    select t.*, coalesce(po.nombre, t.origen_texto) as punto_origen_nombre, pd.nombre as punto_destino_nombre,
+        coalesce(s.nombre, ud.nombre) as solucionado_por_nombre,
+        coalesce(uc.nombre, ucd.nombre) as creado_por_nombre,
         ur.nombre as recibido_por_nombre,
         (select count(*) from traslado_punto_items ti where ti.traslado_id = t.id) as cantidad_items
     from traslados_puntos t
@@ -251,6 +262,7 @@ _SELECT_TRASLADOS = """
     left join supervisores s on s.id = t.solucionado_por
     left join usuarios_dashboard ud on ud.id = t.solucionado_por_usuario
     left join usuarios_punto uc on uc.id = t.creado_por
+    left join usuarios_dashboard ucd on ucd.id = t.creado_por_usuario
     left join usuarios_punto ur on ur.id = t.recibido_por
 """
 
@@ -259,6 +271,7 @@ _CAMPOS_UUID_TRASLADO = (
     "punto_origen_id",
     "punto_destino_id",
     "creado_por",
+    "creado_por_usuario",
     "talonario_id",
     "recibido_por",
     "solucionado_por",
@@ -373,11 +386,12 @@ async def listar_traslados(
 ) -> list[dict]:
     """Bandeja por recibir (destino_id) o enviados (origen_id) -- devuelve el
     conteo de items, no la lista completa (ver GET /traslados-puntos/{id}
-    para el detalle con items). `tipo` ("entre_puntos" | "directo") filtra por
-    clase de traslado; las llegadas directas no tienen origen, asi que solo
-    salen con destino_id o sin filtro de punto."""
-    if tipo is not None and tipo not in ("entre_puntos", "directo"):
-        raise HTTPException(status_code=422, detail="tipo debe ser 'entre_puntos' o 'directo'")
+    para el detalle con items). `tipo` ("entre_puntos" | "directo" |
+    "desde_bodega") filtra por clase de traslado; las llegadas directas y los
+    traslados desde bodega no tienen punto de origen, asi que solo salen con
+    destino_id o sin filtro de punto."""
+    if tipo is not None and tipo not in ("entre_puntos", "directo", "desde_bodega"):
+        raise HTTPException(status_code=422, detail="tipo debe ser 'entre_puntos', 'directo' o 'desde_bodega'")
     pool = await get_pool()
     condiciones: list[str] = []
     parametros: list[object] = []
@@ -578,5 +592,125 @@ async def subir_reporte_syscafe_dashboard(
         raise HTTPException(status_code=413, detail=str(exc)) from exc
     except StorageNoDisponible as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    items = resultado.pop("items")
+    return _serializar_traslado(resultado, items)
+
+
+def _nombre_actor(actor: ActorDashboard) -> str:
+    return actor.usuario["nombre"] if actor.usuario else "Administración"
+
+
+async def _leer_pdf(archivo: UploadFile) -> bytes:
+    # Se lee un byte de mas: basta para detectar el exceso sin cargar todo el archivo.
+    contenido = await archivo.read(MAX_BYTES_REPORTE_SYSCAFE + 1)
+    if len(contenido) > MAX_BYTES_REPORTE_SYSCAFE:
+        raise HTTPException(status_code=413, detail="El archivo supera los 5 MB")
+    return contenido
+
+
+_ERRORES_BODEGA = (
+    TrasladoNoEncontrado,
+    TrasladoYaRecibido,
+    SyscafeDuplicado,
+    TrasladoInvalido,
+    PdfTrasladoInvalido,
+    ArchivoReporteNoPermitido,
+    ArchivoReporteMuyGrande,
+    StorageNoDisponible,
+)
+
+
+def _error_http_bodega(exc: Exception) -> HTTPException:
+    """Mapeo comun de los errores del servicio de traslados desde bodega."""
+    if isinstance(exc, TrasladoNoEncontrado):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, (TrasladoYaRecibido, SyscafeDuplicado)):
+        # 409: conflicto de estado (ya recibido/anulado) o numero ya cargado.
+        return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, (TrasladoInvalido, PdfTrasladoInvalido)):
+        return HTTPException(status_code=422, detail=str(exc))
+    if isinstance(exc, ArchivoReporteNoPermitido):
+        return HTTPException(status_code=415, detail=str(exc))
+    if isinstance(exc, ArchivoReporteMuyGrande):
+        return HTTPException(status_code=413, detail=str(exc))
+    return HTTPException(status_code=502, detail=str(exc))  # StorageNoDisponible
+
+
+@router.post("/traslados-puntos/desde-bodega/borrador")
+async def borrador_desde_bodega(
+    archivo: UploadFile = File(...),
+    actor: ActorDashboard = Depends(requiere_supervisor_area("todo", "traslados")),
+) -> dict:
+    """Dashboard: lee el PDF "TRASLADO ENTRE BODEGAS" del sistema contable (texto,
+    sin IA) y devuelve el borrador para revisar -- no guarda nada. Las
+    `advertencias` dicen que no cuadra (suma contra Totales, renglones
+    ilegibles, numero ya cargado) para que el supervisor lo corrija antes de
+    enviar. Permisos: los mismos que para resolver novedades."""
+    contenido = await _leer_pdf(archivo)
+    try:
+        return await generar_borrador(contenido)
+    except _ERRORES_BODEGA as exc:
+        raise _error_http_bodega(exc) from exc
+
+
+@router.post("/traslados-puntos/desde-bodega", status_code=201)
+async def crear_traslado_desde_bodega(
+    archivo: UploadFile = File(...),
+    datos: str = Form(...),
+    actor: ActorDashboard = Depends(requiere_supervisor_area("todo", "traslados")),
+) -> dict:
+    """Dashboard: envia el traslado ya revisado a un punto (queda en_transito) y
+    guarda el PDF original en Storage. `datos` es el JSON de
+    TrasladoDesdeBodegaDatos en un campo de formulario, junto al archivo. Un
+    numero ya cargado responde 409."""
+    try:
+        parseados = TrasladoDesdeBodegaDatos.model_validate_json(datos)
+    except ValidationError as exc:
+        detalle = "; ".join(
+            f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" if e["loc"] else e["msg"] for e in exc.errors()
+        )
+        raise HTTPException(status_code=422, detail=detalle) from exc
+    contenido = await _leer_pdf(archivo)
+    usuario_id = actor.usuario["id"] if actor.usuario else None
+    try:
+        resultado = await crear_desde_bodega(contenido, parseados, usuario_id=usuario_id, actor=actor.actor)
+    except _ERRORES_BODEGA as exc:
+        raise _error_http_bodega(exc) from exc
+    items = resultado.pop("items")
+    return _serializar_traslado(resultado, items)
+
+
+@router.patch("/traslados-puntos/{traslado_id}/desde-bodega")
+async def editar_traslado_desde_bodega(
+    traslado_id: UUID,
+    payload: TrasladoDesdeBodegaDatos,
+    actor: ActorDashboard = Depends(requiere_supervisor_area("todo", "traslados")),
+) -> dict:
+    """Dashboard: corrige cabecera e items de un traslado desde bodega mientras
+    sigue en_transito; ya recibido o anulado responde 409."""
+    usuario_id = actor.usuario["id"] if actor.usuario else None
+    try:
+        resultado = await editar_desde_bodega(str(traslado_id), payload, usuario_id=usuario_id, actor=actor.actor)
+    except _ERRORES_BODEGA as exc:
+        raise _error_http_bodega(exc) from exc
+    items = resultado.pop("items")
+    return _serializar_traslado(resultado, items)
+
+
+@router.post("/traslados-puntos/{traslado_id}/anular")
+async def anular_traslado_desde_bodega(
+    traslado_id: UUID,
+    payload: AnularTraslado,
+    actor: ActorDashboard = Depends(requiere_supervisor_area("todo", "traslados")),
+) -> dict:
+    """Dashboard: anula un traslado desde bodega que sigue en_transito (motivo
+    obligatorio). Ya recibido o anulado responde 409."""
+    usuario_id = actor.usuario["id"] if actor.usuario else None
+    try:
+        resultado = await anular_desde_bodega(
+            str(traslado_id), payload.motivo, usuario_id=usuario_id, actor=actor.actor, nombre=_nombre_actor(actor)
+        )
+    except _ERRORES_BODEGA as exc:
+        raise _error_http_bodega(exc) from exc
     items = resultado.pop("items")
     return _serializar_traslado(resultado, items)
