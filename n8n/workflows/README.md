@@ -92,7 +92,7 @@ nodo más después de `HTTP: registrar caida en logs`.
 
 | Variable | Ejemplo | Usada por |
 |---|---|---|
-| `API_BASE_URL` | `https://backend-1bs8jn-dbe94c-13-140-182-22.sslip.io` | Workflows 1, 2, 3 |
+| `API_BASE_URL` | `https://backend-1bs8jn-dbe94c-169-58-200-185.sslip.io` | Workflows 1, 2, 3 |
 | `SUPABASE_URL` | `https://hfxhhkbgwxutcxpxpfxu.supabase.co` | Workflow 3 |
 | `SUPABASE_SECRET_KEY` | (secreto — `apps/backend/.env`) | Workflow 3 |
 | `SLACK_WEBHOOK_URL` / credencial Slack | — | Workflow 1 (pendiente) |
