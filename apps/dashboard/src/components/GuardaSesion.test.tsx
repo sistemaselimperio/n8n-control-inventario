@@ -96,7 +96,6 @@ describe("barra de usuario", () => {
     const esperados: [string, string][] = [
       ["Entregas", "/entregas"],
       ["Traslados", "/traslados"],
-      ["Puntos", "/puntos"],
       ["Ranking", "/ranking"],
       ["Turnos", "/turnos"],
       ["Catálogo", "/productos"],
@@ -112,31 +111,24 @@ describe("barra de usuario", () => {
     expect(screen.queryByRole("menuitem", { name: /Ranking/ })).toBeNull();
   });
 
-  it("marca como activa la pestaña de /puntos/[id]", () => {
-    nav.pathname = "/puntos/p1";
-    iniciarSesionDePrueba();
-    montar();
-    expect(screen.getByRole("link", { name: "Puntos" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("link", { name: "Entregas" })).not.toHaveAttribute("aria-current");
-  });
-
-  it("un supervisor de bodega ve bloqueados (sin enlace) Traslados, Puntos, Turnos y Administracion", () => {
+  it("un supervisor de bodega ve bloqueados (sin enlace) Traslados, Turnos y Administracion", () => {
     iniciarSesionDePrueba({ usuario: usuarioDe("supervisor", "bodega") });
     montar();
-    for (const nombre of ["Administración", "Traslados", "Puntos", "Turnos"]) {
+    for (const nombre of ["Administración", "Traslados", "Turnos"]) {
       expect(screen.queryByRole("link", { name: nombre })).toBeNull();
     }
-    expect(screen.getAllByText(", sin acceso")).toHaveLength(4);
+    expect(screen.getAllByText(", sin acceso")).toHaveLength(3);
     // Lo que si puede abrir sigue siendo un enlace.
     expect(screen.getByRole("link", { name: "Ranking" })).toHaveAttribute("href", "/ranking");
     expect(screen.getByRole("link", { name: "Catálogo" })).toHaveAttribute("href", "/productos");
   });
 
-  it("un usuario de area traslados puede abrir Puntos pero no Ranking", () => {
+  it("un usuario de area traslados puede abrir Traslados pero no Ranking", () => {
     nav.pathname = "/traslados";
     iniciarSesionDePrueba({ usuario: usuarioDe("consulta", "traslados") });
     montar();
-    expect(screen.getByRole("link", { name: "Puntos" })).toHaveAttribute("href", "/puntos");
+    expect(screen.getByRole("link", { name: "Traslados" })).toHaveAttribute("href", "/traslados");
+    expect(screen.queryByRole("link", { name: "Puntos" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Ranking" })).toBeNull();
   });
 
@@ -144,7 +136,7 @@ describe("barra de usuario", () => {
     iniciarSesionDePrueba();
     montar();
     expect(screen.queryByRole("button", { name: "Menú de navegación" })).toBeNull();
-    expect(within(screen.getByRole("navigation", { name: "Principal" })).getAllByRole("listitem")).toHaveLength(7);
+    expect(within(screen.getByRole("navigation", { name: "Principal" })).getAllByRole("listitem")).toHaveLength(6);
   });
 
   it("muestra nombre, usuario y rol en el menu de usuario", async () => {

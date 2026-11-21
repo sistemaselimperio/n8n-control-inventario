@@ -86,12 +86,6 @@ const ICONOS = {
       <circle cx="17" cy="18" r="2" />
     </>
   ),
-  puntos: (
-    <>
-      <path d="M20 10c0 5-5.54 10.19-7.4 11.8a1 1 0 0 1-1.2 0C9.54 20.19 4 15 4 10a8 8 0 0 1 16 0" />
-      <circle cx="12" cy="10" r="3" />
-    </>
-  ),
   ranking: <path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3" />,
   turnos: (
     <>
@@ -117,7 +111,6 @@ const ICONOS = {
 const ENLACES_NAV: EnlaceNav[] = [
   { href: "/entregas", etiqueta: "Entregas", grupo: "operacion", icono: ICONOS.entregas },
   { href: "/traslados", etiqueta: "Traslados", grupo: "operacion", icono: ICONOS.traslados },
-  { href: "/puntos", etiqueta: "Puntos", grupo: "operacion", icono: ICONOS.puntos },
   { href: "/ranking", etiqueta: "Ranking", grupo: "analisis", icono: ICONOS.ranking },
   { href: "/turnos", etiqueta: "Turnos", grupo: "analisis", icono: ICONOS.turnos, soloAdmin: true },
   { href: "/productos", etiqueta: "Catálogo", grupo: "configuracion", icono: ICONOS.catalogo },
