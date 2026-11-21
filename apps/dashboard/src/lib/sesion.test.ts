@@ -148,8 +148,7 @@ describe("roles, areas y rutas", () => {
   it("areaEfectiva: admin y sesiones viejas sin area cuentan como todo", () => {
     expect(areaEfectiva(usuario("admin", "bodega"))).toBe("todo");
     expect(areaEfectiva(usuario("consulta"))).toBe("todo");
-    // El area retirada "traslados" que aun puede venir del backend cuenta como bodega.
-    expect(areaEfectiva(usuario("consulta", "traslados"))).toBe("bodega");
+    expect(areaEfectiva(usuario("consulta", "traslados"))).toBe("traslados");
     expect(areaEfectiva(null)).toBe("todo");
   });
 
@@ -159,21 +158,23 @@ describe("roles, areas y rutas", () => {
     expect(rutaPermitida(bodega, "/productos/x")).toBe(true);
     expect(rutaPermitida(bodega, "/")).toBe(true);
     expect(rutaPermitida(bodega, "/traslados")).toBe(false);
+    expect(rutaPermitida(bodega, "/traslados/abc")).toBe(false);
     // "/" solo coincide exacto, no como prefijo de todo.
     expect(rutaPermitida(bodega, "/creador")).toBe(false);
     // Un prefijo parcial no cuenta ("/entregasX").
     expect(rutaPermitida(bodega, "/entregasX")).toBe(false);
-    // Area retirada "traslados": se comporta como bodega.
-    const legado = usuario("consulta", "traslados");
-    expect(rutaPermitida(legado, "/traslados/abc")).toBe(false);
-    expect(rutaPermitida(legado, "/puntos")).toBe(false);
-    expect(rutaPermitida(legado, "/entregas")).toBe(true);
+    // Area traslados: solo /traslados.
+    const traslados = usuario("consulta", "traslados");
+    expect(rutaPermitida(traslados, "/traslados")).toBe(true);
+    expect(rutaPermitida(traslados, "/traslados/abc")).toBe(true);
+    expect(rutaPermitida(traslados, "/puntos")).toBe(false);
+    expect(rutaPermitida(traslados, "/entregas")).toBe(false);
     expect(rutaPermitida(usuario("admin"), "/cualquiera")).toBe(true);
   });
 
   it("rutaInicial por area", () => {
     expect(rutaInicial(usuario("admin"))).toBe("/entregas");
     expect(rutaInicial(usuario("consulta", "bodega"))).toBe("/entregas");
-    expect(rutaInicial(usuario("consulta", "traslados"))).toBe("/entregas");
+    expect(rutaInicial(usuario("consulta", "traslados"))).toBe("/traslados");
   });
 });

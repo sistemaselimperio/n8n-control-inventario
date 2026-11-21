@@ -552,6 +552,8 @@ export interface PuntoAdmin {
   nombre: string;
   codigo: string | null;
   activo: boolean;
+  // Punto interno (bodega propia): marca de datos para el flujo de traslados.
+  es_interna: boolean;
 }
 
 export interface UsuarioPuntoAdmin {
@@ -590,7 +592,7 @@ export const resetearPinEmpleado = (id: string, pin: string) =>
 export const fetchPuntosAdmin = () => adminFetch<PuntoAdmin[]>("/puntos?incluir_inactivos=true");
 export const crearPunto = (nombre: string) =>
   adminFetch<{ id: string; nombre: string }>("/puntos", { method: "POST", body: { nombre } });
-export const actualizarPunto = (id: string, cambios: { nombre?: string; activo?: boolean }) =>
+export const actualizarPunto = (id: string, cambios: { nombre?: string; activo?: boolean; es_interna?: boolean }) =>
   adminFetch<PuntoAdmin>(`/puntos/${id}`, { method: "PATCH", body: cambios });
 
 export const eliminarPunto = (id: string) => eliminarAdmin(`/puntos/${id}`);
@@ -666,11 +668,230 @@ export const crearUsuarioDashboard = (datos: {
   rol: RolDashboard;
   area: AreaDashboard;
   password: string;
+  // Solo area traslados: punto al que queda atado (null = encargada) y cedula.
+  punto_id?: string | null;
+  cedula?: string | null;
 }) => adminFetch<UsuarioDashboardAdmin>("/dashboard/usuarios", { method: "POST", body: datos });
 export const actualizarUsuarioDashboard = (
   id: string,
-  cambios: { nombre?: string; rol?: RolDashboard; area?: AreaDashboard; activo?: boolean }
+  cambios: {
+    nombre?: string;
+    rol?: RolDashboard;
+    area?: AreaDashboard;
+    activo?: boolean;
+    punto_id?: string | null;
+    cedula?: string | null;
+  }
 ) => adminFetch<UsuarioDashboardAdmin>(`/dashboard/usuarios/${id}`, { method: "PATCH", body: cambios });
 export const eliminarUsuarioDashboard = (id: string) => eliminarAdmin(`/dashboard/usuarios/${id}`);
 export const resetearPasswordUsuarioDashboard = (id: string, password: string) =>
   adminFetch<{ ok: boolean }>(`/dashboard/usuarios/${id}/password`, { method: "POST", body: { password } });
+
+// --- Traslados entre puntos (pagina /traslados) ---------------------------
+// Todo va con Bearer (apiFetch). Los errores del backend llegan como
+// `{"detail": "..."}`; el 422 de enviar puede traer ademas `advertencias`.
+
+export type TipoComprobante = "salida" | "ingreso";
+export type EstadoComprobante = "pendiente" | "confirmado" | "devuelto";
+export type EstadoTraslado = "borrador" | "enviado";
+
+export interface PuntoTraslado {
+  id: string;
+  nombre: string;
+  codigo: string | null;
+  es_interna: boolean;
+}
+
+export interface EventoHistorial {
+  evento: string;
+  actor: string | null;
+  resultado: string | null;
+  detalle: string | null;
+  timestamp: string;
+}
+
+export interface Comprobante {
+  id: string;
+  traslado_id: string;
+  numero: string;
+  tipo: TipoComprobante;
+  punto_id: string;
+  punto_nombre: string | null;
+  punto_codigo: string | null;
+  estado: EstadoComprobante;
+  responsable_usuario_id: string | null;
+  responsable_nombre: string | null;
+  responsable_cedula: string | null;
+  firma_url: string | null;
+  observacion: string | null;
+  motivo_devolucion: string | null;
+  resuelto_at: string | null;
+  creado_at: string;
+  actualizado_at: string;
+  // En listas:
+  archivo_nombre?: string | null;
+  pdf_url?: string | null;
+  fecha?: string | null;
+  concepto?: string | null;
+  // En el detalle:
+  historial?: EventoHistorial[];
+  traslado?: Traslado;
+}
+
+export interface Traslado {
+  id: string;
+  numero: string | null;
+  archivo_nombre: string | null;
+  pdf_url: string | null;
+  estado: EstadoTraslado;
+  advertencias: string[];
+  fecha: string | null;
+  concepto: string | null;
+  elaboro: string | null;
+  origen_texto: string | null;
+  destino_texto: string | null;
+  origen_punto_id: string | null;
+  origen_punto: PuntoTraslado | null;
+  destino_punto_id: string | null;
+  destino_punto: PuntoTraslado | null;
+  creado_por: string | null;
+  creado_at: string;
+  actualizado_at: string;
+  enviado_at: string | null;
+  comprobantes: Comprobante[];
+  // Solo en el detalle (y sin historial para usuarios de punto):
+  items?: { descripcion?: string; cantidad?: number | string; [k: string]: unknown }[];
+  historial?: EventoHistorial[];
+}
+
+export interface ResultadoSubida {
+  archivo: string;
+  resultado: "creado" | "borrador" | "duplicado" | "error";
+  detalle: string | null;
+  traslado: Traslado | null;
+  comprobante_existente?: Comprobante | null;
+}
+
+export interface PaginaTraslados<T> {
+  total: number;
+  items: T[];
+}
+
+// Error de traslados: codigo HTTP y, si el 422 de enviar las trae, advertencias.
+export class ErrorTraslado extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly advertencias: string[] = []
+  ) {
+    super(message);
+    this.name = "ErrorTraslado";
+  }
+}
+
+async function trasladosFetch<T>(
+  path: string,
+  opciones: { method?: string; json?: unknown; form?: FormData } = {}
+): Promise<T> {
+  const res = await apiFetch(path, {
+    method: opciones.method ?? "GET",
+    cache: "no-store",
+    // Con FormData el navegador pone el Content-Type con su boundary.
+    headers: opciones.json !== undefined ? JSON_HEADERS : undefined,
+    body: opciones.form ?? (opciones.json !== undefined ? JSON.stringify(opciones.json) : undefined),
+  });
+  if (!res.ok) {
+    const cuerpo = await res.json().catch(() => ({}));
+    const detalle = Array.isArray(cuerpo?.detail)
+      ? cuerpo.detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join("; ")
+      : cuerpo?.detail;
+    const mensaje = typeof detalle === "string" && detalle ? detalle : `La solicitud falló (${res.status})`;
+    const advertencias = Array.isArray(cuerpo?.advertencias) ? (cuerpo.advertencias as string[]) : [];
+    throw new ErrorTraslado(mensaje, res.status, advertencias);
+  }
+  return res.json();
+}
+
+const queryDe = (filtros: Record<string, string | number | undefined>) => {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filtros)) {
+    if (v !== undefined && v !== "") params.set(k, String(v));
+  }
+  const q = params.toString();
+  return q ? `?${q}` : "";
+};
+
+export const fetchTrasladoPuntos = () => trasladosFetch<PuntoTraslado[]>("/traslados/puntos");
+
+export function subirTraslados(archivos: File[]) {
+  const form = new FormData();
+  archivos.forEach((a) => form.append("archivos", a));
+  return trasladosFetch<{ resultados: ResultadoSubida[] }>("/traslados/subir", { method: "POST", form });
+}
+
+export const fetchTraslados = (filtros: {
+  estado?: EstadoTraslado;
+  punto_id?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}) => trasladosFetch<PaginaTraslados<Traslado>>(`/traslados${queryDe(filtros)}`);
+
+export const fetchComprobantes = (filtros: {
+  punto_id?: string;
+  estado?: EstadoComprobante;
+  tipo?: TipoComprobante;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}) => trasladosFetch<PaginaTraslados<Comprobante>>(`/traslados/comprobantes${queryDe(filtros)}`);
+
+export const fetchComprobante = (id: string) =>
+  trasladosFetch<Comprobante>(`/traslados/comprobantes/${encodeURIComponent(id)}`);
+export const fetchTraslado = (id: string) => trasladosFetch<Traslado>(`/traslados/${encodeURIComponent(id)}`);
+
+export const actualizarTraslado = (
+  id: string,
+  cambios: {
+    numero?: string | null;
+    origen_punto_id?: string | null;
+    destino_punto_id?: string | null;
+    fecha?: string | null;
+    concepto?: string | null;
+  }
+) => trasladosFetch<Traslado>(`/traslados/${encodeURIComponent(id)}`, { method: "PATCH", json: cambios });
+
+export const enviarTraslado = (id: string) =>
+  trasladosFetch<Traslado>(`/traslados/${encodeURIComponent(id)}/enviar`, { method: "POST" });
+
+export const eliminarTraslado = (id: string) =>
+  trasladosFetch<{ ok: boolean; archivos_borrados: number }>(`/traslados/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+
+export function confirmarComprobante(id: string, firma: Blob, observacion?: string) {
+  const form = new FormData();
+  form.append("firma", firma, "firma.png");
+  if (observacion) form.append("observacion", observacion);
+  return trasladosFetch<Comprobante>(`/traslados/comprobantes/${encodeURIComponent(id)}/confirmar`, {
+    method: "POST",
+    form,
+  });
+}
+
+export const devolverComprobante = (id: string, motivo: string) =>
+  trasladosFetch<Comprobante>(`/traslados/comprobantes/${encodeURIComponent(id)}/devolver`, {
+    method: "POST",
+    json: { motivo },
+  });
+
+export function reenviarComprobante(id: string, datos: { numero?: string; punto_id?: string; archivo?: File }) {
+  const form = new FormData();
+  if (datos.numero) form.append("numero", datos.numero);
+  if (datos.punto_id) form.append("punto_id", datos.punto_id);
+  if (datos.archivo) form.append("archivo", datos.archivo);
+  return trasladosFetch<Comprobante>(`/traslados/comprobantes/${encodeURIComponent(id)}/reenviar`, {
+    method: "POST",
+    form,
+  });
+}

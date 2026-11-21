@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   crearUsuarioDashboard: vi.fn(),
   eliminarUsuarioDashboard: vi.fn(),
   fetchUsuariosDashboard: vi.fn(),
+  fetchPuntosAdmin: vi.fn(),
   resetearPasswordUsuarioDashboard: vi.fn(),
 }));
 vi.mock("@/lib/api", async (importOriginal) => ({
@@ -27,11 +28,17 @@ const usuarios = [
     ...base,
     id: "u3",
     usuario: "carla",
-    nombre: "Carla Legado",
+    nombre: "Carla Traslados",
     rol: "supervisor",
     area: "traslados",
+    punto_id: "p1",
+    cedula: "1234567",
     bloqueado_hasta: "2999-01-01T00:00:00Z",
   },
+];
+const puntos = [
+  { id: "p1", nombre: "Punto Norte", codigo: "PN", activo: true, es_interna: false },
+  { id: "p2", nombre: "Punto Viejo", codigo: "PV", activo: false, es_interna: false },
 ];
 
 const montar = () =>
@@ -46,6 +53,7 @@ const fila = (nombre: string) => screen.getByText(nombre, { exact: false }).clos
 beforeEach(() => {
   Object.values(api).forEach((f) => f.mockReset());
   api.fetchUsuariosDashboard.mockResolvedValue(usuarios);
+  api.fetchPuntosAdmin.mockResolvedValue(puntos);
   api.crearUsuarioDashboard.mockResolvedValue({});
   api.actualizarUsuarioDashboard.mockResolvedValue({});
   api.resetearPasswordUsuarioDashboard.mockResolvedValue({ ok: true });
@@ -60,9 +68,10 @@ describe("SeccionUsuariosDashboard: listado", () => {
     expect(within(fila("Beto Consulta")).getByText(/Consulta, área bodega/)).toBeInTheDocument();
     expect(within(fila("Beto Consulta")).queryByText(/nunca/)).toBeNull();
     expect(within(fila("Ana Admin")).getByText(/Último ingreso: nunca/)).toBeInTheDocument();
-    expect(within(fila("Carla Legado")).getByText(/Bloqueado hasta/)).toBeInTheDocument();
-    // El area retirada "traslados" que aun devuelve el backend se muestra como bodega.
-    expect(within(fila("Carla Legado")).getByText(/Supervisor, área bodega/)).toBeInTheDocument();
+    expect(within(fila("Carla Traslados")).getByText(/Bloqueado hasta/)).toBeInTheDocument();
+    expect(within(fila("Carla Traslados")).getByText(/Supervisor, área traslados/)).toBeInTheDocument();
+    expect(within(fila("Carla Traslados")).getByText(/Punto Norte/)).toBeInTheDocument();
+    expect(within(fila("Carla Traslados")).getByText(/C\.C\. 1234567/)).toBeInTheDocument();
     expect(within(fila("Beto Consulta")).queryByText(/Bloqueado hasta/)).toBeNull();
   });
 
@@ -116,6 +125,54 @@ describe("SeccionUsuariosDashboard: crear", () => {
     expect(screen.getByLabelText("Nombre")).toHaveValue("");
   });
 
+  it("con area traslados pide punto (o encargada) y cedula, y los envia", async () => {
+    montar();
+    await llenar();
+    await userEvent.selectOptions(screen.getByLabelText("Rol"), "supervisor");
+    await userEvent.selectOptions(screen.getByLabelText("Área"), "traslados");
+    const selectPunto = screen.getByLabelText("Punto");
+    // Solo puntos activos, mas la opcion de encargada.
+    expect(within(selectPunto).getByRole("option", { name: /Todos los puntos/ })).toBeInTheDocument();
+    expect(within(selectPunto).queryByRole("option", { name: "Punto Viejo" })).toBeNull();
+    await userEvent.selectOptions(selectPunto, "p1");
+    await userEvent.type(screen.getByLabelText(/^Cédula/), "1002003004");
+    await userEvent.click(screen.getByRole("button", { name: "Crear usuario" }));
+    await waitFor(() =>
+      expect(api.crearUsuarioDashboard).toHaveBeenCalledWith({
+        usuario: "nuevousuario",
+        nombre: "Nuevo",
+        rol: "supervisor",
+        area: "traslados",
+        password: "claveSegura1",
+        punto_id: "p1",
+        cedula: "1002003004",
+      }),
+    );
+  });
+
+  it("la encargada se crea sin punto y la cedula vacia se envia como null", async () => {
+    montar();
+    await llenar();
+    await userEvent.selectOptions(screen.getByLabelText("Rol"), "supervisor");
+    await userEvent.selectOptions(screen.getByLabelText("Área"), "traslados");
+    await userEvent.click(screen.getByRole("button", { name: "Crear usuario" }));
+    await waitFor(() =>
+      expect(api.crearUsuarioDashboard).toHaveBeenCalledWith(expect.objectContaining({ punto_id: null, cedula: null })),
+    );
+  });
+
+  it("una cedula invalida (no 5 a 15 digitos) bloquea el boton", async () => {
+    montar();
+    await llenar();
+    await userEvent.selectOptions(screen.getByLabelText("Rol"), "supervisor");
+    await userEvent.selectOptions(screen.getByLabelText("Área"), "traslados");
+    await userEvent.type(screen.getByLabelText(/^Cédula/), "12ab");
+    expect(screen.getByLabelText(/^Cédula/)).toHaveValue("12");
+    expect(screen.getByRole("button", { name: "Crear usuario" })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(/^Cédula/), "345");
+    expect(screen.getByRole("button", { name: "Crear usuario" })).toBeEnabled();
+  });
+
   it("un admin siempre queda con area 'todo' aunque se haya elegido otra", async () => {
     montar();
     await llenar();
@@ -163,6 +220,42 @@ describe("SeccionUsuariosDashboard: editar y restablecer contraseña", () => {
     await userEvent.click(screen.getByRole("button", { name: "Guardar" }));
     await waitFor(() =>
       expect(api.actualizarUsuarioDashboard).toHaveBeenCalledWith("u2", { nombre: "Beto Consulta", rol: "admin", area: "todo" }),
+    );
+  });
+
+  it("editar un usuario de traslados permite cambiar punto y cedula (null limpia)", async () => {
+    montar();
+    await screen.findByText(/Carla Traslados/);
+    await userEvent.click(within(fila("Carla Traslados")).getByRole("button", { name: "Editar" }));
+    expect(screen.getByLabelText("Punto")).toHaveValue("p1");
+    expect(screen.getByLabelText(/^Cédula/)).toHaveValue("1234567");
+    await userEvent.selectOptions(screen.getByLabelText("Punto"), "");
+    await userEvent.clear(screen.getByLabelText(/^Cédula/));
+    await userEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() =>
+      expect(api.actualizarUsuarioDashboard).toHaveBeenCalledWith("u3", {
+        nombre: "Carla Traslados",
+        rol: "supervisor",
+        area: "traslados",
+        punto_id: null,
+        cedula: null,
+      }),
+    );
+  });
+
+  it("al sacar a un usuario de traslados se limpia su punto", async () => {
+    montar();
+    await screen.findByText(/Carla Traslados/);
+    await userEvent.click(within(fila("Carla Traslados")).getByRole("button", { name: "Editar" }));
+    await userEvent.selectOptions(screen.getAllByLabelText("Área").at(-1) as HTMLElement, "bodega");
+    await userEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() =>
+      expect(api.actualizarUsuarioDashboard).toHaveBeenCalledWith("u3", {
+        nombre: "Carla Traslados",
+        rol: "supervisor",
+        area: "bodega",
+        punto_id: null,
+      }),
     );
   });
 

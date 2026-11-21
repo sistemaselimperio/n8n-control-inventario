@@ -540,3 +540,171 @@ describe("sesion del dashboard", () => {
     await expect(api.cambiarPassword("x", "y")).rejects.toThrow("La contraseña actual no coincide");
   });
 });
+
+describe("traslados", () => {
+  const sesion = () => iniciarSesionDePrueba();
+
+  it("fetchTrasladoPuntos pide /traslados/puntos con Bearer", async () => {
+    sesion();
+    const f = mockFetch(respuestaJson([{ id: "p1", nombre: "N", codigo: "N", es_interna: false }]));
+    const r = await api.fetchTrasladoPuntos();
+    const { url, headers } = ultimaLlamada(f);
+    expect(url).toBe(`${BASE}/traslados/puntos`);
+    expect(headers.get("Authorization")).toBe("Bearer tok-123");
+    expect(r[0].id).toBe("p1");
+  });
+
+  it("subirTraslados envia cada PDF en el campo repetido `archivos` sin Content-Type manual", async () => {
+    sesion();
+    const f = mockFetch(respuestaJson({ resultados: [] }));
+    const a = new File(["a"], "a.pdf", { type: "application/pdf" });
+    const b = new File(["b"], "b.pdf", { type: "application/pdf" });
+    await api.subirTraslados([a, b]);
+    const { url, init, headers } = ultimaLlamada(f);
+    expect(url).toBe(`${BASE}/traslados/subir`);
+    expect(init.method).toBe("POST");
+    expect(headers.has("Content-Type")).toBe(false);
+    const cuerpo = init.body as FormData;
+    expect(cuerpo.getAll("archivos").map((x) => (x as File).name)).toEqual(["a.pdf", "b.pdf"]);
+  });
+
+  it("fetchTraslados arma la query y omite los filtros vacios", async () => {
+    sesion();
+    const f = mockFetch(respuestaJson({ total: 0, items: [] }));
+    await api.fetchTraslados({ estado: "borrador", q: "", punto_id: undefined, limit: 50, offset: 0 });
+    expect(ultimaLlamada(f).url).toBe(`${BASE}/traslados?estado=borrador&limit=50&offset=0`);
+  });
+
+  it("fetchComprobantes arma la query de filtros", async () => {
+    sesion();
+    const f = mockFetch(respuestaJson({ total: 0, items: [] }));
+    await api.fetchComprobantes({ estado: "devuelto", tipo: "salida", punto_id: "p1", q: "FV 12", limit: 25 });
+    const url = new URL(ultimaLlamada(f).url);
+    expect(url.pathname).toBe("/traslados/comprobantes");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      estado: "devuelto",
+      tipo: "salida",
+      punto_id: "p1",
+      q: "FV 12",
+      limit: "25",
+    });
+  });
+
+  it("detalles: GET por id", async () => {
+    sesion();
+    const f = mockFetch(respuestaJson({ id: "c1" }));
+    await api.fetchComprobante("c1");
+    expect(ultimaLlamada(f).url).toBe(`${BASE}/traslados/comprobantes/c1`);
+    await api.fetchTraslado("t1");
+    expect(ultimaLlamada(f).url).toBe(`${BASE}/traslados/t1`);
+  });
+
+  it("actualizarTraslado hace PATCH JSON y deja pasar null para limpiar", async () => {
+    sesion();
+    const f = mockFetch(respuestaJson({ id: "t1" }));
+    await api.actualizarTraslado("t1", { numero: "FV 9", concepto: null });
+    const { url, init, headers } = ultimaLlamada(f);
+    expect(url).toBe(`${BASE}/traslados/t1`);
+    expect(init.method).toBe("PATCH");
+    expect(headers.get("Content-Type")).toBe("application/json");
+    expect(JSON.parse(init.body as string)).toEqual({ numero: "FV 9", concepto: null });
+  });
+
+  it("enviarTraslado: un 422 trae las advertencias en el error", async () => {
+    sesion();
+    mockFetch(respuestaJson({ detail: "Faltan datos", advertencias: ["Sin destino", "Sin fecha"] }, 422));
+    const err = await api.enviarTraslado("t1").catch((e) => e);
+    expect(err).toBeInstanceOf(api.ErrorTraslado);
+    expect(err.message).toBe("Faltan datos");
+    expect(err.status).toBe(422);
+    expect(err.advertencias).toEqual(["Sin destino", "Sin fecha"]);
+  });
+
+  it("enviarTraslado hace POST a /enviar", async () => {
+    sesion();
+    const f = mockFetch(respuestaJson({ id: "t1" }));
+    await api.enviarTraslado("t1");
+    const { url, init } = ultimaLlamada(f);
+    expect(url).toBe(`${BASE}/traslados/t1/enviar`);
+    expect(init.method).toBe("POST");
+  });
+
+  it("eliminarTraslado hace DELETE y un 409 conserva el codigo", async () => {
+    sesion();
+    const f = mockFetch(respuestaJson({ ok: true, archivos_borrados: 1 }));
+    await api.eliminarTraslado("t1");
+    expect(ultimaLlamada(f).init.method).toBe("DELETE");
+    mockFetch(respuestaJson({ detail: "Ya confirmado" }, 409));
+    const err = await api.eliminarTraslado("t1").catch((e) => e);
+    expect(err.status).toBe(409);
+    expect(err.advertencias).toEqual([]);
+  });
+
+  it("confirmarComprobante manda la firma PNG y la observacion opcional como multipart", async () => {
+    sesion();
+    const f = mockFetch(respuestaJson({ id: "c1" }));
+    await api.confirmarComprobante("c1", new Blob(["png"], { type: "image/png" }), "Todo completo");
+    const { url, init } = ultimaLlamada(f);
+    expect(url).toBe(`${BASE}/traslados/comprobantes/c1/confirmar`);
+    const cuerpo = init.body as FormData;
+    expect((cuerpo.get("firma") as File).type).toBe("image/png");
+    expect(cuerpo.get("observacion")).toBe("Todo completo");
+    await api.confirmarComprobante("c1", new Blob(["png"], { type: "image/png" }));
+    expect((ultimaLlamada(f).init.body as FormData).has("observacion")).toBe(false);
+  });
+
+  it("devolverComprobante envia el motivo en JSON", async () => {
+    sesion();
+    const f = mockFetch(respuestaJson({ id: "c1" }));
+    await api.devolverComprobante("c1", "Cantidad errada");
+    const { url, init } = ultimaLlamada(f);
+    expect(url).toBe(`${BASE}/traslados/comprobantes/c1/devolver`);
+    expect(JSON.parse(init.body as string)).toEqual({ motivo: "Cantidad errada" });
+  });
+
+  it("reenviarComprobante manda solo los campos dados", async () => {
+    sesion();
+    const f = mockFetch(respuestaJson({ id: "c1" }));
+    await api.reenviarComprobante("c1", { numero: "FV 10", punto_id: "p2" });
+    let cuerpo = ultimaLlamada(f).init.body as FormData;
+    expect(ultimaLlamada(f).url).toBe(`${BASE}/traslados/comprobantes/c1/reenviar`);
+    expect(cuerpo.get("numero")).toBe("FV 10");
+    expect(cuerpo.get("punto_id")).toBe("p2");
+    expect(cuerpo.has("archivo")).toBe(false);
+    await api.reenviarComprobante("c1", { archivo: new File(["x"], "n.pdf", { type: "application/pdf" }) });
+    cuerpo = ultimaLlamada(f).init.body as FormData;
+    expect((cuerpo.get("archivo") as File).name).toBe("n.pdf");
+    expect(cuerpo.has("numero")).toBe(false);
+  });
+
+  it("un 401 con sesion expira la sesion tambien en traslados", async () => {
+    sesion();
+    const assign = mockLocation("/traslados");
+    mockFetch(respuestaJson({ detail: "No autorizado" }, 401));
+    await api.fetchComprobantes({}).catch(() => {});
+    expect(leerSesion()).toBeNull();
+    expect(assign).toHaveBeenCalledWith("/login?expirada=1");
+  });
+
+  it("sin cuerpo JSON usa el respaldo con el codigo", async () => {
+    sesion();
+    mockFetch(new Response("boom", { status: 502 }));
+    await expect(api.fetchComprobantes({})).rejects.toThrow(/502/);
+  });
+});
+
+describe("usuarios del dashboard y puntos con traslados", () => {
+  it("crearUsuarioDashboard envia punto_id y cedula", async () => {
+    iniciarSesionDePrueba();
+    const f = mockFetch(respuestaJson({}));
+    await api.crearUsuarioDashboard({ usuario: "u", nombre: "N", rol: "supervisor", area: "traslados", password: "12345678", punto_id: "p1", cedula: "123456" });
+    expect(JSON.parse(ultimaLlamada(f).init.body as string)).toMatchObject({ punto_id: "p1", cedula: "123456" });
+  });
+
+  it("actualizarPunto acepta es_interna", async () => {
+    iniciarSesionDePrueba();
+    const f = mockFetch(respuestaJson({}));
+    await api.actualizarPunto("p1", { es_interna: true });
+    expect(JSON.parse(ultimaLlamada(f).init.body as string)).toEqual({ es_interna: true });
+  });
+});

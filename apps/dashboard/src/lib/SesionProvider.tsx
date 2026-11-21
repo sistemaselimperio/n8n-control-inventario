@@ -66,7 +66,9 @@ export function SesionProvider({ children }: { children: ReactNode }) {
         if (
           actual.usuario.nombre !== usuario.nombre ||
           actual.usuario.rol !== usuario.rol ||
-          actual.usuario.area !== usuario.area
+          actual.usuario.area !== usuario.area ||
+          (actual.usuario.punto_id ?? null) !== (usuario.punto_id ?? null) ||
+          (actual.usuario.cedula ?? null) !== (usuario.cedula ?? null)
         ) {
           guardarSesion({ ...actual, usuario });
         }

@@ -13,7 +13,7 @@ import {
   fetchUsuariosPuntoAdmin,
   resetearPinUsuarioPunto,
 } from "@/lib/api";
-import { ErrorConReintento, Panel } from "@/components/ui";
+import { ErrorConReintento, Panel, Pildora } from "@/components/ui";
 import {
   INPUT,
   BOTON_PRIMARIO,
@@ -166,7 +166,7 @@ export function SeccionPuntos() {
   };
 
   return (
-    <Panel conRelleno={false} titulo="Puntos y usuarios de punto" subtitulo="Bodegas del flujo de traslados y quienes operan en cada una." conteo={data ? String(data.length) : undefined}>
+    <Panel conRelleno={false} titulo="Puntos y usuarios de punto" subtitulo="Puntos de destino de los traslados y quienes firman en cada uno. Un punto interno es una bodega propia." conteo={data ? String(data.length) : undefined}>
       <div className="flex flex-wrap items-end gap-3 border-b border-line p-4 sm:p-5">
         <Campo etiqueta="Nombre del punto" className="min-w-[200px] flex-1">
           <input value={nombre} onChange={(e) => setNombre(e.target.value)} className={INPUT} />
@@ -211,6 +211,25 @@ export function SeccionPuntos() {
                   <>
                     <span className="min-w-[160px] flex-1 text-ink">{punto.nombre}</span>
                     <Insignia activo={punto.activo} />
+                    {punto.es_interna ? <Pildora tono="info">Interna</Pildora> : null}
+                    <button
+                      role="switch"
+                      aria-checked={punto.es_interna}
+                      aria-label={`Interna: ${punto.nombre}`}
+                      className={BOTON_LINK}
+                      onClick={async () => {
+                        const nuevo = !punto.es_interna;
+                        if (
+                          await ejecutar(
+                            () => actualizarPunto(punto.id, { es_interna: nuevo }),
+                            nuevo ? "Punto marcado como interno" : "Punto ya no es interno",
+                          )
+                        )
+                          mutate();
+                      }}
+                    >
+                      {punto.es_interna ? "Quitar interna" : "Marcar interna"}
+                    </button>
                     <button className={BOTON_LINK} onClick={() => setAbiertoId(abiertoId === punto.id ? null : punto.id)}>
                       {abiertoId === punto.id ? "Ocultar usuarios" : "Usuarios"}
                     </button>

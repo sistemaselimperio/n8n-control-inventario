@@ -42,7 +42,7 @@ export function GuardaSesion({ children }: { children: ReactNode }) {
   }, [listo, publica, sesion, pathname, router]);
 
   // Area: si la ruta no corresponde al area del usuario, se lo lleva a su
-  // primera pagina permitida (ej. bodega -> /entregas).
+  // primera pagina permitida (ej. traslados -> /traslados).
   const permitida = publica || !sesion || rutaPermitida(sesion.usuario, pathname);
   useEffect(() => {
     if (!permitida && sesion) router.replace(rutaInicial(sesion.usuario));
@@ -79,6 +79,13 @@ const ICONOS = {
   entregas: (
     <path d="m7.5 4.27 9 5.15M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16ZM3.3 7 12 12l8.7-5M12 22V12" />
   ),
+  traslados: (
+    <>
+      <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2M15 18H9M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14" />
+      <circle cx="7" cy="18" r="2" />
+      <circle cx="17" cy="18" r="2" />
+    </>
+  ),
   ranking: <path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3" />,
   turnos: (
     <>
@@ -103,6 +110,7 @@ const ICONOS = {
 // fusiono con ella).
 const ENLACES_NAV: EnlaceNav[] = [
   { href: "/entregas", etiqueta: "Entregas", grupo: "operacion", icono: ICONOS.entregas },
+  { href: "/traslados", etiqueta: "Traslados", grupo: "operacion", icono: ICONOS.traslados },
   { href: "/ranking", etiqueta: "Ranking", grupo: "analisis", icono: ICONOS.ranking },
   { href: "/turnos", etiqueta: "Turnos", grupo: "analisis", icono: ICONOS.turnos, soloAdmin: true },
   { href: "/productos", etiqueta: "Catálogo", grupo: "configuracion", icono: ICONOS.catalogo },

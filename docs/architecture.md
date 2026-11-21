@@ -89,9 +89,42 @@ facturas_faltantes    (id uuid pk, tipo, indicativo_numero, sede_id, reportado_p
                        -- bodega reporta una factura que el mostrador aun no subio; se resuelve sola al insertarse en entregas
                        -- unique parcial (tipo, indicativo_numero) where estado = 'pendiente'
 logs (append-only)    (id uuid pk, evento, entidad_tipo, entidad_id, actor_id, sede_id, resultado, detalle jsonb, timestamp)
+puntos                (… + es_interna bool)          -- bodega propia (TB8, TB9, TBE, TB): su lado de un traslado no genera comprobante
+usuarios_dashboard    (… + punto_id fk -> puntos, cedula)  -- punto: solo ve/firma lo de ese punto; cedula: la que firma
+traslados             (id uuid pk, numero, archivo_nombre, pdf_ruta, estado borrador|enviado, advertencias jsonb,
+                       origen_punto_id, destino_punto_id, origen_texto, destino_texto, items jsonb, archivos jsonb, creado_por, …)
+                       -- un PDF "TRASLADO ENTRE BODEGAS"; borrador = falta numero/origen/destino (advertencias), no se adivina
+traslado_comprobantes (id uuid pk, traslado_id fk on delete cascade, numero, tipo salida|ingreso, punto_id fk, estado pendiente|confirmado|devuelto,
+                       responsable_usuario_id/nombre/cedula, firma_ruta, observacion, motivo_devolucion, resuelto_at, …)
+                       -- unique (numero, punto_id, tipo) = barrera anti-duplicado; unique (traslado_id, tipo)
 ```
 
 DDL exacto: `apps/backend/app/db.py` (`_SCHEMA`, aplicado automáticamente al arrancar). Modelos de request/response (Pydantic): `apps/backend/app/models/`.
+
+### Módulo Traslados (comprobantes de salida e ingreso)
+
+Reemplaza al módulo retirado de traslados entre puntos (que sigue en el backend por la app móvil oculta).
+Código: `app/routers/traslados.py` (`/traslados/...`), `app/services/traslados.py` (base y Storage),
+`app/services/traslados_reglas.py` (reglas puras) y `app/services/permisos_traslados.py` (perfiles).
+
+1. La encargada sube uno o varios PDFs "TRASLADO ENTRE BODEGAS" (`POST /traslados/subir`). El parser de
+   `pdf_traslado_bodega.py` (texto, sin IA) lee número, "Bodega:" (origen) y "Destino:" (destino); cada una se
+   busca entre los `puntos` por código o nombre.
+2. Cada PDF es un `traslado` con hasta dos `traslado_comprobantes`: SALIDA para el origen e INGRESO para el
+   destino. Un lado cuyo punto es `es_interna` no genera comprobante. Si falta número, origen o destino queda en
+   `borrador` con `advertencias`; la encargada lo completa (`PATCH`) y lo envía (`POST .../enviar`).
+3. Duplicados: `unique (numero, punto_id, tipo)`; un archivo repetido se reporta `duplicado` y no crea nada
+   (la carrera entre dos cargas cae en `UniqueViolationError`, igual que `duplicates.py`).
+4. Estados de un comprobante: `pendiente -> confirmado | devuelto`; `devuelto -> pendiente` (reenviar);
+   `confirmado -> devuelto` (solo encargada/admin). Salida e ingreso son independientes.
+5. Perfiles (rol + área + punto del usuario del dashboard): admin (todo); encargada = supervisor área `traslados`
+   sin punto (sube, completa, envía, devuelve confirmados, corrige/reenvía, borra); usuario de punto = supervisor
+   área `traslados` con punto (solo su punto: confirma con firma obligatoria o devuelve con motivo, firmando con su
+   cédula); lectura = consulta de `traslados` y supervisor/consulta de `todo`; área `bodega` no entra. Solo sesión
+   Bearer, no se acepta el token legacy.
+6. Cada acción escribe un evento inmutable en `logs` (`traslado_*`, `traslado_comprobante_*`); el historial de un
+   comprobante se lee de ahí. El borrado definitivo elimina filas y archivos de Storage (PDFs y firmas, listados en
+   `traslados.archivos`) pero no toca `logs`.
 
 ## 4. Viabilidad y riesgos
 
