@@ -187,3 +187,38 @@ def test_formato_con_columna_costo():
         ("03462", "SAL M/DA 12% X 40 KILOS", "BULTO", 2),
     ]
     assert datos["advertencias"] == []
+
+
+# Variante sin columna de precio: costo pegado al detalle, empaque a veces
+# ausente, prefijo del numero con digito y codigo de bodega alfanumerico.
+_TEXTO_SIN_PRECIO = """                                                      TRASLADO ENTRE BODEGAS
+                                                      SUTA NUEVA No:
+Nit: 1053323036-5                               _7LT0KBEQ7              TS3 - 1023
+
+ Concepto    SUGERIDO VET 10 DE NOVIEMBRE SUTA        Pág:      1          Nov-11-2026
+
+ Referencia       Detalle                              Emb.          Cant          Precio
+
+5658                     41,100.00ALBENDAZOL 25% CO. FR X 200 ML UN                    3.00
+03056                    22,800.00BEBEDERO AVES X 8LT                                  3.00
+
+Bodega:   NOR   BODEGA QUIMICOS VETERINARIA               Peso                 Totales                 6.00
+Destino:S3      BODEGA SUTAMARCHAN
+
+   Elaboró                Revisó                   Aprobó
+
+ERIKA
+"""
+
+
+def test_formato_sin_precio_con_costo_pegado():
+    datos = pdf.parsear_traslado_bodega(_TEXTO_SIN_PRECIO)
+    assert datos["numero"] == "TS3-1023"
+    assert datos["origen"] == "BODEGA QUIMICOS VETERINARIA"
+    assert datos["destino_texto"] == "BODEGA SUTAMARCHAN"
+    assert [(i["referencia"], i["detalle"], i["cantidad"], i["precio"]) for i in datos["items"]] == [
+        ("5658", "ALBENDAZOL 25% CO. FR X 200 ML", 3, 0.0),
+        ("03056", "BEBEDERO AVES X", 3, 0.0),
+    ]
+    assert datos["elaboro"] == "ERIKA"
+    assert datos["advertencias"] == []

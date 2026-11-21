@@ -72,17 +72,20 @@ _MESES = {
     "jul": 7, "aug": 8, "ago": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12, "dic": 12,
 }  # fmt: skip
 
-# Dos formatos de SysCafe: "Referencia ... Precio" y "REF/COD ... COSTO DETALLE
+# Variantes de SysCafe: "Referencia ... Precio" y "REF/COD ... COSTO DETALLE
 # EMB CANT PRECIO" (este ultimo con los titulos pegados al extraer el texto).
 _ENCABEZADO_TABLA = re.compile(r"^\s*(?:Referencia\b.*\bPrecio\b|REF/COD\b.*PRECIO)")
-# Formato con columna COSTO: el costo sale pegado al detalle ("147,318.2318-18-18
-# NUTRIMON") y puede venir enmascarado ("**,***,***.**") o negativo.
+# En algunas variantes el costo sale pegado al detalle ("147,318.2318-18-18
+# NUTRIMON", "41,100.00ALBENDAZOL") y puede venir enmascarado ("**,***,***.**")
+# o negativo; se descarta.
 _COSTO_PEGADO = re.compile(r"^(?:-?[\d,]*\d\.\d{2}|\*[*,.]*)(?=\S)")
 _INICIO_PIE = re.compile(r"^\s*Bodega:")
 # El numero sale con espacios intercalados en el PDF ("N PT - 1839").
-_NUMERO = re.compile(r"\b([A-Z](?:\s?[A-Z]){1,3})\s*-\s*(\d{1,7})(?![\d-])")
+# El prefijo puede llevar digitos ("TS3 - 1023").
+_NUMERO = re.compile(r"\b([A-Z](?:\s?[A-Z0-9]){1,3})\s*-\s*(\d{1,7})(?![\d-])")
 _FECHA = re.compile(r"\b([A-Za-z]{3})-(\d{2})-(\d{4})\b")
-_ITEM = re.compile(r"^\s*([0-9A-Za-z\-]+)\s+(.+?)\s+(\d+\.\d{1,2})\s+([\d,]*\d\.\d{1,2})\s*$")
+# El precio es opcional: hay variantes que terminan en la cantidad.
+_ITEM = re.compile(r"^\s*([0-9A-Za-z\-]+)\s+(.+?)\s+(\d+\.\d{1,2})(?:\s+([\d,]*\d\.\d{1,2}))?\s*$")
 _TOTAL = re.compile(r"Totales\s+([\d,]*\d(?:\.\d+)?)")
 
 
@@ -145,7 +148,6 @@ def parsear_traslado_bodega(texto: str) -> dict:
     if indice_tabla is None:
         raise PdfTrasladoInvalido("No se encontró la tabla de productos del traslado. ¿Es el PDF correcto?")
     encabezado = lineas[:indice_tabla]
-    con_costo = "COSTO" in lineas[indice_tabla].upper()
     resto = lineas[indice_tabla + 1 :]
     indice_pie = next((i for i, linea in enumerate(resto) if _INICIO_PIE.match(linea)), len(resto))
     cuerpo, pie = resto[:indice_pie], resto[indice_pie:]
@@ -177,8 +179,7 @@ def parsear_traslado_bodega(texto: str) -> dict:
         coincidencia = _ITEM.match(linea)
         if coincidencia:
             referencia, descripcion, cantidad, precio = coincidencia.groups()
-            if con_costo:
-                descripcion = _COSTO_PEGADO.sub("", descripcion, count=1)
+            descripcion = _COSTO_PEGADO.sub("", descripcion, count=1)
             detalle, empaque = _separar_empaque(descripcion)
             items.append(
                 {
@@ -186,7 +187,7 @@ def parsear_traslado_bodega(texto: str) -> dict:
                     "detalle": detalle,
                     "empaque": empaque,
                     "cantidad": _numero(float(cantidad)),
-                    "precio": float(precio.replace(",", "")),
+                    "precio": float(precio.replace(",", "")) if precio else 0.0,
                 }
             )
         elif re.match(r"\s*\d", linea):
@@ -196,10 +197,11 @@ def parsear_traslado_bodega(texto: str) -> dict:
     if not items:
         raise PdfTrasladoInvalido("No se encontraron productos en el PDF")
 
-    # El formato con columna COSTO antepone el codigo numerico de la bodega
-    # ("Bodega:  01   BODEGA VENTAS"); se descarta para quedarse con el nombre.
-    origen = _primer_grupo(r"Bodega:\s+(?:\d+\s+)?(.+?)(?:\s{2,}|$)", pie)
-    destino_texto = _primer_grupo(r"Destino:\s+(?:\d+\s+)?(.+?)\s*$", pie)
+    # Algunas variantes anteponen el codigo de la bodega ("Bodega:  01   BODEGA
+    # VENTAS", "Bodega:  NOR  BODEGA ...", "Destino:S3   BODEGA ..."); se descarta
+    # para quedarse con el nombre.
+    origen = _primer_grupo(r"Bodega:\s*(?:[A-Z0-9]{1,4}\s{2,})?(.+?)(?:\s{2,}|$)", pie)
+    destino_texto = _primer_grupo(r"Destino:\s*(?:[A-Z0-9]{1,4}\s{2,})?(.+?)\s*$", pie)
     if not destino_texto:
         advertencias.append("No se pudo leer la bodega de destino")
 
