@@ -151,6 +151,44 @@ def test_sugerir_punto_por_nombre_ignora_prefijo_bodega_y_codigo():
     assert pdf.sugerir_punto("", puntos) is None
 
 
+_PUNTOS_CON_ALIAS = [
+    {
+        "id": "bv",
+        "nombre": "BV — Bodega Ventas",
+        "codigo": "BV",
+        "alias": ["Bodega Principal", "Principal", "Bodega Agroquímicos Estación"],
+    },
+    {"id": "sfc", "nombre": "SFC — Samacá", "codigo": "SFC", "alias": []},
+]
+
+
+def test_sugerir_punto_usa_el_alias_en_coincidencia_exacta():
+    assert pdf.sugerir_punto("BODEGA PRINCIPAL", _PUNTOS_CON_ALIAS)["id"] == "bv"
+    assert pdf.sugerir_punto("BODEGA AGROQUIMICOS ESTACION", _PUNTOS_CON_ALIAS)["id"] == "bv"
+
+
+def test_sugerir_punto_no_usa_el_alias_en_coincidencia_parcial():
+    # "principal" esta contenido en el texto, pero el alias solo vale exacto.
+    assert pdf.sugerir_punto("BODEGA SAMACA PRINCIPAL", _PUNTOS_CON_ALIAS)["id"] == "sfc"
+    assert pdf.sugerir_punto("BODEGA PRINCIPAL NORTE", _PUNTOS_CON_ALIAS) is None
+
+
+def test_sugerir_punto_con_alias_compartido_por_dos_puntos_no_adivina():
+    puntos = [
+        {"id": "a", "nombre": "AAA — Uno", "codigo": "AAA", "alias": ["Principal"]},
+        {"id": "b", "nombre": "BBB — Dos", "codigo": "BBB", "alias": ["Bodega Principal"]},
+    ]
+    assert pdf.sugerir_punto("BODEGA PRINCIPAL", puntos) is None
+
+
+def test_sugerir_punto_tolera_alias_ausente_o_nulo():
+    puntos = [
+        {"id": "p1", "nombre": "CFC — La Cumbre", "codigo": "CFC"},
+        {"id": "p2", "nombre": "PT — Puente de Tierra", "codigo": "PT", "alias": None},
+    ]
+    assert pdf.sugerir_punto("BODEGA PUENTE DE TIERRA", puntos)["id"] == "p2"
+
+
 # Formato con columna COSTO (encabezado "REF/COD ... COSTODETALLEEMBCANTPRECIO"):
 # el costo sale pegado al detalle y puede venir enmascarado o negativo.
 _TEXTO_CON_COSTO = """ COMERCIALIZADORA EL IMPERIO                                       TRASLADO ENTRE BODEGAS

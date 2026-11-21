@@ -28,6 +28,7 @@ from app.models.traslado_punto import (
     normalizar_numero_syscafe,
 )
 from app.services import borrado_admin
+from app.services.puntos_alias import validar_alias
 from app.services.permisos_dashboard import ActorDashboard, autorizar_admin, requiere_admin, requiere_supervisor_area
 from app.services.auth_pin import generar_sal, hashear_pin, verificar_pin
 from app.services.talonarios import (
@@ -105,7 +106,7 @@ async def listar_puntos(
     if incluir_inactivos:
         await autorizar_admin(authorization, x_admin_token)
         rows = await pool.fetch(
-            "select id, nombre, codigo, activo, es_interna from puntos "
+            "select id, nombre, codigo, activo, es_interna, alias from puntos "
             "order by activo desc, codigo nulls last, nombre"
         )
         return [
@@ -115,6 +116,7 @@ async def listar_puntos(
                 "codigo": r["codigo"],
                 "activo": r["activo"],
                 "es_interna": r["es_interna"],
+                "alias": list(r["alias"] or []),
             }
             for r in rows
         ]
@@ -130,14 +132,20 @@ async def crear_punto(payload: PuntoCrear) -> dict:
     el borrado definitivo de entregas, ver requiere_admin). Se usa
     desde la pantalla /creador del dashboard, desde aca o desde
     scripts/crear_punto.py."""
+    try:
+        alias = await validar_alias(payload.alias, None)
+    except DatoInvalido as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     pool = await get_pool()
     try:
         row = await pool.fetchrow(
-            "insert into puntos (nombre) values ($1) returning id, nombre", payload.nombre
+            "insert into puntos (nombre, alias) values ($1, $2::text[]) returning id, nombre, alias",
+            payload.nombre,
+            alias,
         )
     except Exception as exc:  # noqa: BLE001 - mismo criterio que crear_empleado/crear_sede
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"id": str(row["id"]), "nombre": row["nombre"]}
+    return {"id": str(row["id"]), "nombre": row["nombre"], "alias": list(row["alias"] or [])}
 
 
 @router.get("/puntos/{punto_id}/usuarios")
@@ -218,8 +226,11 @@ async def resetear_pin_usuario_punto(usuario_id: UUID, payload: PinNuevo) -> dic
 
 @router.patch("/puntos/{punto_id}", dependencies=[Depends(requiere_admin)])
 async def actualizar_punto(punto_id: UUID, payload: PuntoActualizar) -> dict:
+    cambios = payload.model_dump(exclude_none=True)
     try:
-        return await actualizar_fila("puntos", str(punto_id), payload.model_dump(exclude_none=True))
+        if "alias" in cambios:
+            cambios["alias"] = await validar_alias(cambios["alias"], str(punto_id))
+        return await actualizar_fila("puntos", str(punto_id), cambios)
     except RegistroNoEncontrado as exc:
         raise HTTPException(status_code=404, detail="Punto no encontrado") from exc
     except DatoInvalido as exc:

@@ -148,7 +148,8 @@ The whole system exists to move one flow reliably (Figure 1 in `docs/architectur
   `app/services/traslados.py` (DB + Storage), `traslados_reglas.py` (reglas puras: estados, plan de comprobantes),
   `permisos_traslados.py` (perfiles admin/encargada/punto/lectura, solo sesión Bearer) y tablas `traslados` /
   `traslado_comprobantes` (`unique (numero, punto_id, tipo)`). Convive con el módulo viejo `traslados_puntos` (app móvil
-  oculta): no se toca ni se mezclan tablas. `puntos.es_interna` (sembrada una sola vez) y `usuarios_dashboard.punto_id` /
+  oculta): no se toca ni se mezclan tablas. `puntos.es_interna` (sembrada una sola vez), `puntos.alias` (otros nombres con que el PDF escribe el punto:
+  valen solo en coincidencia exacta, únicos entre puntos activos, sembrados una sola vez) y `usuarios_dashboard.punto_id` /
   `cedula` se editan desde `/creador`. Detalle en `docs/architecture.md`.
 - `tipos_documento` table (seeded in `ensure_schema()`) — the document types shown to the vision model as
   examples. `app/services/vision.py` keeps the prompt fixed and only fills the examples sentence from the

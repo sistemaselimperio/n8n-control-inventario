@@ -147,20 +147,32 @@ function UsuariosDePunto({ puntoId }: { puntoId: string }) {
   );
 }
 
+const ETIQUETA_ALIAS = "Otros nombres (separados por coma)";
+
+// "Principal, Bodega Matriz" -> ["Principal", "Bodega Matriz"] (sin vacios).
+const aListaAlias = (texto: string) =>
+  texto
+    .split(",")
+    .map((a) => a.trim())
+    .filter(Boolean);
+
 export function SeccionPuntos() {
   const { data, error, isLoading, mutate } = useSWR(["creador-puntos"], () => fetchPuntosAdmin());
   const [nombre, setNombre] = useState("");
+  const [aliasTexto, setAliasTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [nombreEdit, setNombreEdit] = useState("");
+  const [aliasEdit, setAliasEdit] = useState("");
   const [abiertoId, setAbiertoId] = useState<string | null>(null);
 
   const agregar = async () => {
     setEnviando(true);
-    const ok = await ejecutar(() => crearPunto(nombre.trim()), "Punto creado");
+    const ok = await ejecutar(() => crearPunto(nombre.trim(), aListaAlias(aliasTexto)), "Punto creado");
     setEnviando(false);
     if (ok) {
       setNombre("");
+      setAliasTexto("");
       mutate();
     }
   };
@@ -170,6 +182,9 @@ export function SeccionPuntos() {
       <div className="flex flex-wrap items-end gap-3 border-b border-line p-4 sm:p-5">
         <Campo etiqueta="Nombre del punto" className="min-w-[200px] flex-1">
           <input value={nombre} onChange={(e) => setNombre(e.target.value)} className={INPUT} />
+        </Campo>
+        <Campo etiqueta={ETIQUETA_ALIAS} className="min-w-[200px] flex-1">
+          <input value={aliasTexto} onChange={(e) => setAliasTexto(e.target.value)} className={INPUT} />
         </Campo>
         <button onClick={agregar} disabled={enviando || !nombre.trim()} className={BOTON_PRIMARIO}>
           {enviando ? "Creando…" : "Crear punto"}
@@ -191,11 +206,23 @@ export function SeccionPuntos() {
                 {editandoId === punto.id ? (
                   <>
                     <input aria-label="Nombre" value={nombreEdit} onChange={(e) => setNombreEdit(e.target.value)} className={`${INPUT} min-w-[160px] flex-1`} />
+                    <input
+                      aria-label={ETIQUETA_ALIAS}
+                      placeholder="Otros nombres, separados por coma"
+                      value={aliasEdit}
+                      onChange={(e) => setAliasEdit(e.target.value)}
+                      className={`${INPUT} min-w-[200px] flex-1`}
+                    />
                     <button
                       className={BOTON_LINK}
                       disabled={!nombreEdit.trim()}
                       onClick={async () => {
-                        if (await ejecutar(() => actualizarPunto(punto.id, { nombre: nombreEdit.trim() }), "Punto actualizado")) {
+                        if (
+                          await ejecutar(
+                            () => actualizarPunto(punto.id, { nombre: nombreEdit.trim(), alias: aListaAlias(aliasEdit) }),
+                            "Punto actualizado",
+                          )
+                        ) {
                           setEditandoId(null);
                           mutate();
                         }
@@ -239,6 +266,7 @@ export function SeccionPuntos() {
                       onClick={() => {
                         setEditandoId(punto.id);
                         setNombreEdit(punto.nombre);
+                        setAliasEdit((punto.alias ?? []).join(", "));
                       }}
                     >
                       Editar
@@ -263,6 +291,9 @@ export function SeccionPuntos() {
                   </>
                 )}
               </div>
+              {editandoId !== punto.id && (punto.alias ?? []).length > 0 ? (
+                <p className="-mt-2 px-4 pb-3 text-xs text-muted sm:px-5">Otros nombres: {punto.alias.join(", ")}</p>
+              ) : null}
               {abiertoId === punto.id ? <UsuariosDePunto puntoId={punto.id} /> : null}
             </li>
           ))}

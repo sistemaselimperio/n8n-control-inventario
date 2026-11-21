@@ -554,6 +554,8 @@ export interface PuntoAdmin {
   activo: boolean;
   // Punto interno (bodega propia): marca de datos para el flujo de traslados.
   es_interna: boolean;
+  // Otros nombres con los que el sistema contable escribe el punto en los PDF.
+  alias: string[];
 }
 
 export interface UsuarioPuntoAdmin {
@@ -590,9 +592,15 @@ export const resetearPinEmpleado = (id: string, pin: string) =>
   adminFetch<{ ok: boolean }>(`/empleados/${id}/pin`, { method: "POST", body: { pin } });
 
 export const fetchPuntosAdmin = () => adminFetch<PuntoAdmin[]>("/puntos?incluir_inactivos=true");
-export const crearPunto = (nombre: string) =>
-  adminFetch<{ id: string; nombre: string }>("/puntos", { method: "POST", body: { nombre } });
-export const actualizarPunto = (id: string, cambios: { nombre?: string; activo?: boolean; es_interna?: boolean }) =>
+export const crearPunto = (nombre: string, alias: string[] = []) =>
+  adminFetch<{ id: string; nombre: string; alias: string[] }>("/puntos", {
+    method: "POST",
+    body: alias.length > 0 ? { nombre, alias } : { nombre },
+  });
+export const actualizarPunto = (
+  id: string,
+  cambios: { nombre?: string; activo?: boolean; es_interna?: boolean; alias?: string[] },
+) =>
   adminFetch<PuntoAdmin>(`/puntos/${id}`, { method: "PATCH", body: cambios });
 
 export const eliminarPunto = (id: string) => eliminarAdmin(`/puntos/${id}`);

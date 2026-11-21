@@ -701,6 +701,22 @@ describe("usuarios del dashboard y puntos con traslados", () => {
     expect(JSON.parse(ultimaLlamada(f).init.body as string)).toMatchObject({ punto_id: "p1", cedula: "123456" });
   });
 
+  it("crearPunto envia alias solo cuando hay", async () => {
+    iniciarSesionDePrueba();
+    const f = mockFetch(respuestaJson({}));
+    await api.crearPunto("Punto", ["Principal"]);
+    expect(JSON.parse(ultimaLlamada(f).init.body as string)).toEqual({ nombre: "Punto", alias: ["Principal"] });
+    await api.crearPunto("Punto", []);
+    expect(JSON.parse(ultimaLlamada(f).init.body as string)).toEqual({ nombre: "Punto" });
+  });
+
+  it("actualizarPunto acepta alias, incluso vacio", async () => {
+    iniciarSesionDePrueba();
+    const f = mockFetch(respuestaJson({}));
+    await api.actualizarPunto("p1", { nombre: "N", alias: [] });
+    expect(JSON.parse(ultimaLlamada(f).init.body as string)).toEqual({ nombre: "N", alias: [] });
+  });
+
   it("actualizarPunto acepta es_interna", async () => {
     iniciarSesionDePrueba();
     const f = mockFetch(respuestaJson({}));

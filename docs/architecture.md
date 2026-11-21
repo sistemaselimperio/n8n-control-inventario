@@ -89,7 +89,8 @@ facturas_faltantes    (id uuid pk, tipo, indicativo_numero, sede_id, reportado_p
                        -- bodega reporta una factura que el mostrador aun no subio; se resuelve sola al insertarse en entregas
                        -- unique parcial (tipo, indicativo_numero) where estado = 'pendiente'
 logs (append-only)    (id uuid pk, evento, entidad_tipo, entidad_id, actor_id, sede_id, resultado, detalle jsonb, timestamp)
-puntos                (… + es_interna bool)          -- bodega propia (TB8, TB9, TBE, TB): su lado de un traslado no genera comprobante
+puntos                (… + es_interna bool, alias text[])  -- bodega propia (TB8, TB9, TBE, TB): su lado de un traslado no genera comprobante;
+                                                           -- alias: otros nombres con que el PDF escribe el punto (solo coincidencia exacta)
 usuarios_dashboard    (… + punto_id fk -> puntos, cedula)  -- punto: solo ve/firma lo de ese punto; cedula: la que firma
 traslados             (id uuid pk, numero, archivo_nombre, pdf_ruta, estado borrador|enviado, advertencias jsonb,
                        origen_punto_id, destino_punto_id, origen_texto, destino_texto, items jsonb, archivos jsonb, creado_por, …)
@@ -109,7 +110,10 @@ Código: `app/routers/traslados.py` (`/traslados/...`), `app/services/traslados.
 
 1. La encargada sube uno o varios PDFs "TRASLADO ENTRE BODEGAS" (`POST /traslados/subir`). El parser de
    `pdf_traslado_bodega.py` (texto, sin IA) lee número, "Bodega:" (origen) y "Destino:" (destino); cada una se
-   busca entre los `puntos` por código o nombre.
+   busca entre los `puntos` por código o nombre. Un alias (`puntos.alias`, editable en `/creador`) cuenta como el
+   nombre del punto solo en coincidencia exacta, nunca parcial; si dos puntos coinciden, queda `borrador`. El
+   alias no puede repetir el nombre ni el alias de otro punto activo (409). `ensure_schema()` siembra una sola vez
+   el alias, BV (interna), VET como interna y GUA.
 2. Cada PDF es un `traslado` con hasta dos `traslado_comprobantes`: SALIDA para el origen e INGRESO para el
    destino. Un lado cuyo punto es `es_interna` no genera comprobante. Si falta número, origen o destino queda en
    `borrador` con `advertencias`; la encargada lo completa (`PATCH`) y lo envía (`POST .../enviar`).

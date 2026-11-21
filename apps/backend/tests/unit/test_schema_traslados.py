@@ -24,10 +24,49 @@ def test_es_interna_se_agrega_y_siembra_en_un_solo_bloque_condicionado():
     assert re.search(r"update puntos set es_interna = true where codigo in \('TB8', 'TB9', 'TBE', 'TB'\)", bloque)
 
 
+def _bloque_alias() -> str:
+    coincidencia = re.search(
+        r"do \$\$\s*begin\s*if not exists \(\s*select 1 from information_schema\.columns"
+        r"(?:(?!end \$\$;).)*?column_name = 'alias'.*?end \$\$;",
+        _SCHEMA,
+        flags=re.S,
+    )
+    assert coincidencia, "No se encontro el bloque que agrega y siembra puntos.alias"
+    return coincidencia.group(0)
+
+
 def test_el_seed_de_es_interna_no_corre_fuera_del_bloque():
     """Un update suelto se repetiria en cada arranque y pisaria lo editado."""
-    sin_bloque = _SCHEMA.replace(_bloque_es_interna(), "")
-    assert "es_interna = true" not in sin_bloque
+    sin_bloques = _SCHEMA.replace(_bloque_es_interna(), "").replace(_bloque_alias(), "")
+    assert "es_interna = true" not in sin_bloques
+
+
+def test_alias_se_agrega_y_siembra_en_un_solo_bloque_condicionado():
+    bloque = _bloque_alias()
+    assert "table_name = 'puntos'" in bloque
+    assert "add column if not exists alias text[] not null default '{}'" in bloque
+    # BV: interna, con sus otros nombres, y sin pisar un punto que ya exista.
+    assert "'BV'" in bloque and "'BV — Bodega Ventas'" in bloque
+    for alias in (
+        "Bodega Ventas Principal",
+        "Bodega Interna Ventas",
+        "Bodega Principal",
+        "Bodega Central",
+        "Principal",
+        "Bodega Agroquímicos Estación",
+    ):
+        assert f"'{alias}'" in bloque
+    assert re.search(r"update puntos set es_interna = true where codigo = 'VET'", bloque)
+    assert "'GUA'" in bloque and "'GUA — Guasca'" in bloque
+    # Los inserts no fallan ni pisan si el codigo o el nombre ya existen.
+    assert bloque.count("on conflict do nothing") == 2
+
+
+def test_el_seed_de_alias_no_corre_fuera_del_bloque():
+    """Un seed suelto se repetiria en cada arranque y pisaria lo editado desde /creador."""
+    sin_bloques = _SCHEMA.replace(_bloque_es_interna(), "").replace(_bloque_alias(), "")
+    assert "'BV'" not in sin_bloques and "'GUA'" not in sin_bloques and "'VET'" not in sin_bloques
+    assert "alias text[]" not in sin_bloques
 
 
 def test_usuarios_dashboard_tiene_punto_y_cedula():

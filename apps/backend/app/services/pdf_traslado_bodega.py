@@ -257,15 +257,23 @@ def _variantes_punto(punto: dict) -> set[str]:
     return {v for v in variantes if v}
 
 
+def claves_alias_punto(punto: dict) -> set[str]:
+    """Claves de los otros nombres (`alias`) del punto. Un dict sin la llave
+    `alias` (o con None) no tiene ninguno."""
+    return {c for c in (_clave(a) for a in (punto.get("alias") or [])) if c}
+
+
 def sugerir_punto(destino_texto: str | None, puntos: list[dict]) -> dict | None:
     """Punto cuyo nombre coincide con el destino leido ("BODEGA PUENTE DE
     TIERRA"), ignorando tildes, mayusculas, el "bodega" inicial y el codigo del
-    punto. Primero coincidencia exacta y, si no hay, por contenido; solo se
+    punto. Primero coincidencia exacta (con el nombre o con un alias del punto)
+    y, si no hay, por contenido solo con el nombre: un alias corto como
+    "Principal" haria ambiguo cualquier texto que lo contenga. Solo se
     devuelve si el candidato es unico."""
     buscado = _clave(destino_texto or "")
     if not buscado:
         return None
-    exactos = [p for p in puntos if buscado in _variantes_punto(p)]
+    exactos = [p for p in puntos if buscado in _variantes_punto(p) or buscado in claves_alias_punto(p)]
     if len(exactos) == 1:
         return exactos[0]
     if exactos:

@@ -185,10 +185,16 @@ def _escapar_like(texto: str) -> str:
 
 async def _puntos_activos(pool) -> list[dict]:
     filas = await pool.fetch(
-        "select id, nombre, codigo, es_interna from puntos where activo = true order by nombre"
+        "select id, nombre, codigo, es_interna, alias from puntos where activo = true order by nombre"
     )
     return [
-        {"id": str(f["id"]), "nombre": f["nombre"], "codigo": f["codigo"], "es_interna": bool(f["es_interna"])}
+        {
+            "id": str(f["id"]),
+            "nombre": f["nombre"],
+            "codigo": f["codigo"],
+            "es_interna": bool(f["es_interna"]),
+            "alias": list(f.get("alias") or []),
+        }
         for f in filas
     ]
 
@@ -561,7 +567,10 @@ async def puntos_para_traslados(perfil: PerfilTraslados) -> list[dict]:
     """Puntos activos para los selectores del dashboard (un usuario de punto
     solo ve el suyo)."""
     pool = await get_pool()
-    return [p for p in await _puntos_activos(pool) if perfil.ve(p["id"])]
+    # El alias solo sirve para resolver el texto del PDF; no viaja a los selectores.
+    return [
+        {k: v for k, v in p.items() if k != "alias"} for p in await _puntos_activos(pool) if perfil.ve(p["id"])
+    ]
 
 
 async def _comprobantes_de(pool, traslado_ids: list[str], perfil: PerfilTraslados) -> list[Any]:

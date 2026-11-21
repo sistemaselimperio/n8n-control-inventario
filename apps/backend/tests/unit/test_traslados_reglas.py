@@ -162,6 +162,40 @@ def test_resolver_punto_no_adivina_si_el_codigo_es_ambiguo():
     assert r.resolver_punto("SFC", repetidos) is None
 
 
+BV = "44444444-4444-4444-4444-444444444444"
+PUNTOS_CON_ALIAS = [
+    *PUNTOS,
+    {
+        "id": BV,
+        "nombre": "BV — Bodega Ventas",
+        "codigo": "BV",
+        "es_interna": True,
+        "alias": ["Bodega Ventas Principal", "Bodega Principal", "Principal", "Bodega Agroquímicos Estación"],
+    },
+]
+
+
+@pytest.mark.parametrize(
+    "texto, esperado",
+    [
+        ("BODEGA PRINCIPAL", BV),
+        ("BODEGA AGROQUIMICOS ESTACION", BV),
+        ("BODEGA VENTAS PRINCIPAL", BV),
+        ("BV", BV),
+        ("BODEGA SAMACA PRINCIPAL", SFC),  # el alias no vale en coincidencia parcial
+        ("BODEGA DESCONOCIDA", None),
+    ],
+)
+def test_resolver_punto_usa_los_alias(texto, esperado):
+    punto = r.resolver_punto(texto, PUNTOS_CON_ALIAS)
+    assert (punto["id"] if punto else None) == esperado
+
+
+def test_resolver_punto_con_alias_compartido_no_adivina():
+    otro = {"id": "x", "nombre": "XX — Otra", "codigo": "XX", "es_interna": False, "alias": ["Principal"]}
+    assert r.resolver_punto("BODEGA PRINCIPAL", [*PUNTOS_CON_ALIAS, otro]) is None
+
+
 # --------------------------- evaluar_traslado ---------------------------
 
 SFC_P, CFC_P, TB9_P = PUNTOS

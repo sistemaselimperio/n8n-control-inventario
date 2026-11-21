@@ -4,15 +4,23 @@ app/models/traslado_punto.py). Mismo mecanismo de login por PIN que empleados
 (ver app/services/auth_pin.py), reusando la misma validacion de formato de PIN.
 """
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator
 
 from app.models.empleado import _validar_pin
 
 
+# Otros nombres con los que el sistema contable escribe el punto (ver
+# app/services/puntos_alias.py). El recorte y la validacion contra otros
+# puntos los hace el servicio.
+NombreAlterno = Annotated[str, StringConstraints(strip_whitespace=True, max_length=80)]
+ListaAlias = Annotated[list[NombreAlterno], Field(max_length=20)]
+
+
 class PuntoCrear(BaseModel):
     nombre: str
+    alias: ListaAlias = Field(default_factory=list)
 
 
 class UsuarioPuntoCrear(BaseModel):
@@ -44,6 +52,8 @@ class PuntoActualizar(BaseModel):
     activo: bool | None = None
     # Bodega propia (TB8, TB9...): en el modulo de traslados no genera comprobantes.
     es_interna: bool | None = None
+    # None = no tocar; lista vacia = quitar todos los otros nombres.
+    alias: ListaAlias | None = None
 
 
 class UsuarioPuntoActualizar(BaseModel):

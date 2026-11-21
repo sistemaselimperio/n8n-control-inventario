@@ -85,6 +85,39 @@ async def test_es_interna_se_siembra_una_sola_vez(pg):
     assert internas == {"TB8", "TBE", "TB", "CFC"}
 
 
+async def test_semilla_de_alias_crea_bv_gua_y_marca_vet_una_sola_vez(pg):
+    await pg.execute("alter table puntos drop column alias")  # simula la base anterior a esta funcion
+    await crear_punto(pg, "VET — Veterinaria", "VET")
+    await db.ensure_schema()
+    filas = {f["codigo"]: f for f in await pg.fetch("select codigo, nombre, es_interna, alias from puntos")}
+    assert set(filas) == {"VET", "BV", "GUA"}
+    assert filas["VET"]["es_interna"] is True
+    assert filas["BV"]["nombre"] == "BV — Bodega Ventas" and filas["BV"]["es_interna"] is True
+    assert "Principal" in filas["BV"]["alias"] and "Bodega Agroquímicos Estación" in filas["BV"]["alias"]
+    assert filas["GUA"]["nombre"] == "GUA — Guasca" and filas["GUA"]["es_interna"] is False and filas["GUA"]["alias"] == []
+    # Lo que se edite despues desde /creador sobrevive a los siguientes arranques.
+    await pg.execute("update puntos set alias = '{Solo uno}', es_interna = false where codigo = 'BV'")
+    await pg.execute("update puntos set es_interna = false where codigo = 'VET'")
+    await pg.execute("delete from puntos where codigo = 'GUA'")
+    await db.ensure_schema()
+    await db.ensure_schema()
+    filas = {f["codigo"]: f for f in await pg.fetch("select codigo, es_interna, alias from puntos")}
+    assert set(filas) == {"VET", "BV"}
+    assert filas["BV"]["alias"] == ["Solo uno"] and filas["BV"]["es_interna"] is False
+    assert filas["VET"]["es_interna"] is False
+
+
+async def test_semilla_de_alias_no_pisa_un_punto_que_ya_existe(pg):
+    await pg.execute("alter table puntos drop column alias")
+    await crear_punto(pg, "BV — Bodega de Ventas Antigua", "BV")
+    await crear_punto(pg, "GUA — Guasca", "GUA")  # mismo nombre que la semilla
+    await db.ensure_schema()
+    filas = {f["codigo"]: f for f in await pg.fetch("select codigo, nombre, es_interna, alias from puntos")}
+    assert set(filas) == {"BV", "GUA"}
+    assert filas["BV"]["nombre"] == "BV — Bodega de Ventas Antigua"
+    assert filas["BV"]["es_interna"] is False and filas["BV"]["alias"] == []
+
+
 async def test_la_base_rechaza_un_comprobante_repetido(pg):
     origen, _, _ = await _puntos(pg)
     for n in (1, 2):
@@ -323,6 +356,26 @@ async def test_alta_de_usuario_con_punto_y_cedula_y_login(pg, cliente):
               "punto_id": "99999999-9999-9999-9999-999999999999", "password": "clave-segura-1"},
     )
     assert inexistente.status_code == 422
+
+
+async def test_alias_de_punto_ida_y_vuelta_y_resolucion_del_pdf(pg, cliente):
+    await _puntos(pg)
+    _, h_admin, _ = await _usuario(pg, "root", rol="admin", area="todo")
+    pdt = str(await pg.fetchval("select id from puntos where codigo = 'PDT'"))
+    bvt = str(await pg.fetchval("select id from puntos where codigo = 'BVT'"))
+    res = await cliente.patch(f"/puntos/{pdt}", headers=h_admin, json={"alias": [" Bodega Principal ", "principal", ""]})
+    assert res.status_code == 200 and res.json()["alias"] == ["Bodega Principal"]
+    lista = (await cliente.get("/puntos", params={"incluir_inactivos": "true"}, headers=h_admin)).json()
+    assert {p["codigo"]: p["alias"] for p in lista}["PDT"] == ["Bodega Principal"]
+    # Otro punto activo no puede usar el mismo nombre alterno.
+    repetido = await cliente.patch(f"/puntos/{bvt}", headers=h_admin, json={"alias": ["BODEGA PRINCIPAL"]})
+    assert repetido.status_code == 409
+    # El punto puede volver a guardar su propio alias, y limpiarlo.
+    assert (await cliente.patch(f"/puntos/{pdt}", headers=h_admin, json={"alias": ["Bodega Principal"]})).status_code == 200
+    limpio = await cliente.patch(f"/puntos/{pdt}", headers=h_admin, json={"alias": []})
+    assert limpio.status_code == 200 and limpio.json()["alias"] == []
+    # El selector de traslados conserva su forma (sin alias).
+    assert set((await cliente.get("/traslados/puntos", headers=h_admin)).json()[0]) <= {"id", "nombre", "codigo", "es_interna"}
 
 
 async def test_editar_es_interna_desde_el_admin(pg, cliente):

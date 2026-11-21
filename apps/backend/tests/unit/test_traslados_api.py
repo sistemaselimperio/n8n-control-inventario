@@ -621,7 +621,7 @@ async def test_listar_puntos_es_publico_y_solo_trae_activos(cliente, pool, conn)
 
 
 async def test_listar_puntos_inactivos_con_token_agrega_el_campo_activo(cliente, pool, conn, admin_headers):
-    conn.responder("fetch", "from puntos order by activo", [{"id": uuid.UUID(PUNTO_ORIGEN), "nombre": "CFC", "codigo": "CFC", "activo": False, "es_interna": False}])
+    conn.responder("fetch", "from puntos order by activo", [{"id": uuid.UUID(PUNTO_ORIGEN), "nombre": "CFC", "codigo": "CFC", "activo": False, "es_interna": False, "alias": []}])
     res = await cliente.get("/puntos", params={"incluir_inactivos": "true"}, headers=admin_headers)
     assert res.json()[0]["activo"] is False
 
@@ -641,9 +641,9 @@ async def test_listar_usuarios_de_punto_nunca_expone_el_pin(cliente, pool, conn)
 
 
 async def test_crear_punto_con_token_admin(cliente, pool, conn, admin_headers):
-    conn.responder("fetchrow", "insert into puntos", {"id": uuid.UUID(PUNTO_ORIGEN), "nombre": "Nuevo"})
+    conn.responder("fetchrow", "insert into puntos", {"id": uuid.UUID(PUNTO_ORIGEN), "nombre": "Nuevo", "alias": []})
     res = await cliente.post("/puntos", json={"nombre": "Nuevo"}, headers=admin_headers)
-    assert (res.status_code, res.json()) == (201, {"id": PUNTO_ORIGEN, "nombre": "Nuevo"})
+    assert (res.status_code, res.json()) == (201, {"id": PUNTO_ORIGEN, "nombre": "Nuevo", "alias": []})
 
 
 async def test_crear_punto_repetido_responde_400(cliente, pool, conn, admin_headers):

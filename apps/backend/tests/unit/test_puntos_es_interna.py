@@ -19,7 +19,7 @@ async def test_listado_de_administracion_incluye_es_interna(cliente, pool, conn)
     conn.responder(
         "fetch",
         "from puntos order by activo",
-        [{"id": uuid.UUID(PUNTO), "nombre": "TB9 — Bodega", "codigo": "TB9", "activo": True, "es_interna": True}],
+        [{"id": uuid.UUID(PUNTO), "nombre": "TB9 — Bodega", "codigo": "TB9", "activo": True, "es_interna": True, "alias": []}],
     )
     res = await cliente.get("/puntos", params={"incluir_inactivos": "true"}, headers=_sesion(conn))
     assert res.json()[0]["es_interna"] is True

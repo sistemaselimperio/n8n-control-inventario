@@ -151,6 +151,30 @@ async def test_origen_interno_solo_genera_ingreso(base, conn):
     assert len(base.sql_ejecutado("insert into traslado_comprobantes (")) == 1
 
 
+async def test_destino_se_resuelve_por_el_alias_del_punto(base, conn, texto_pdf):
+    conn._reglas = [x for x in conn._reglas if x[1] != "from puntos where activo = true"]
+    conn.responder(
+        "fetch", "from puntos where activo = true", [PUNTOS[0], {**PUNTOS[1], "alias": ["Bodega Principal"]}, PUNTOS[2]]
+    )
+    texto_pdf["texto"] = TEXTO.replace("BODEGA PUENTE DE TIERRA", "BODEGA PRINCIPAL")
+    res = await svc.procesar_pdf("a.pdf", PDF, ENCARGADA)
+    assert res["resultado"] == "creado" and res["traslado"]["destino_punto_id"] == PDT
+    (_, sql, _) = conn.sql_ejecutado("from puntos where activo = true")[0]
+    assert "alias" in sql  # la carga de puntos activos trae los otros nombres
+
+
+async def test_alias_compartido_por_dos_puntos_deja_el_traslado_en_borrador(base, conn, texto_pdf):
+    conn._reglas = [x for x in conn._reglas if x[1] != "from puntos where activo = true"]
+    conn.responder(
+        "fetch",
+        "from puntos where activo = true",
+        [PUNTOS[0], {**PUNTOS[1], "alias": ["Principal"]}, {**PUNTOS[2], "alias": ["Bodega Principal"]}],
+    )
+    texto_pdf["texto"] = TEXTO.replace("BODEGA PUENTE DE TIERRA", "BODEGA PRINCIPAL")
+    res = await svc.procesar_pdf("a.pdf", PDF, ENCARGADA)
+    assert res["resultado"] == "borrador" and res["traslado"]["destino_punto_id"] is None
+
+
 async def test_destino_no_identificado_deja_borrador_sin_comprobantes(base, conn, texto_pdf):
     texto_pdf["texto"] = TEXTO.replace("BODEGA PUENTE DE TIERRA", "BODEGA DESCONOCIDA")
     res = await svc.procesar_pdf("a.pdf", PDF, ENCARGADA)
@@ -781,6 +805,12 @@ async def test_puntos_para_traslados_solo_activos_y_acotados_al_alcance(pool, co
     assert [p["codigo"] for p in todos] == ["BVT", "PDT", "TB9"] and todos[2]["es_interna"] is True
     solo = await svc.puntos_para_traslados(PUNTO_PDT)
     assert [p["codigo"] for p in solo] == ["PDT"]
+
+
+async def test_puntos_para_traslados_no_expone_los_alias(pool, conn, storage):
+    conn.responder("fetch", "from puntos where activo = true", [{**PUNTOS[0], "alias": ["Principal"]}])
+    (punto,) = await svc.puntos_para_traslados(ENCARGADA)
+    assert set(punto) == {"id", "nombre", "codigo", "es_interna"}
 
 
 async def test_asyncpg_no_se_traga_errores_ajenos(pool, conn, storage):

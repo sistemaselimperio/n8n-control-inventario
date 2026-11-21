@@ -704,6 +704,33 @@ begin
     end if;
 end $$;
 
+-- Otros nombres del punto (`alias`): con los que el sistema contable lo escribe
+-- en los PDF ("BODEGA PRINCIPAL" para BV). Solo cuentan en coincidencia exacta
+-- (ver sugerir_punto). Igual que es_interna, la columna y la siembra de puntos
+-- ocurren UNA sola vez, en el mismo bloque, para no pisar despues lo que se edite
+-- desde /creador. Los inserts usan "on conflict do nothing": si el codigo o el
+-- nombre ya existen, no se toca ni se falla.
+do $$
+begin
+    if not exists (
+        select 1 from information_schema.columns
+        where table_schema = current_schema() and table_name = 'puntos' and column_name = 'alias'
+    ) then
+        alter table puntos add column if not exists alias text[] not null default '{}';
+        insert into puntos (codigo, nombre, es_interna, alias)
+        values (
+            'BV', 'BV — Bodega Ventas', true,
+            array['Bodega Ventas Principal', 'Bodega Interna Ventas', 'Bodega Principal',
+                  'Bodega Central', 'Principal', 'Bodega Agroquímicos Estación']
+        )
+        on conflict do nothing;
+        update puntos set es_interna = true where codigo = 'VET';
+        insert into puntos (codigo, nombre, es_interna)
+        values ('GUA', 'GUA — Guasca', false)
+        on conflict do nothing;
+    end if;
+end $$;
+
 -- Punto asignado y cedula del usuario del dashboard: la encargada de traslados
 -- (area 'traslados', sin punto) ve todo; un usuario con punto solo ve y firma
 -- los comprobantes de ese punto con su propia cedula.
