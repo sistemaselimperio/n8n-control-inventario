@@ -139,6 +139,26 @@ async def _rastro_empleado(pg, emp: str, descripcion: str) -> None:
         raise AssertionError(descripcion)
 
 
+async def _traslado_nuevo(pg, origen: str | None = None, destino: str | None = None) -> str:
+    return str(
+        await pg.fetchval(
+            "insert into traslados (creado_por, origen_punto_id, destino_punto_id) values ('dashboard:x', $1::uuid, $2::uuid) returning id",
+            origen, destino,
+        )
+    )
+
+
+async def _comprobante_nuevo(pg, punto: str, responsable: str | None = None) -> None:
+    traslado = await _traslado_nuevo(pg)
+    await pg.execute(
+        """
+        insert into traslado_comprobantes (traslado_id, numero, tipo, punto_id, responsable_usuario_id)
+        values ($1::uuid, $2, 'salida', $3::uuid, $4::uuid)
+        """,
+        traslado, f"T-{uuid4().hex[:6]}", punto, responsable,
+    )
+
+
 async def _rastro_punto(pg, punto: str, descripcion: str) -> None:
     otro = await crear_punto(pg, f"O-{uuid4().hex[:6]}", f"O{uuid4().hex[:5]}")
     usuario = await crear_usuario_punto(pg, otro)
@@ -150,6 +170,13 @@ async def _rastro_punto(pg, punto: str, descripcion: str) -> None:
         await insertar_log(pg, sede_id=punto)
     elif descripcion == "usuarios asignados":
         await crear_usuario_punto(pg, punto)
+    elif descripcion == "comprobantes de traslados":
+        await _comprobante_nuevo(pg, punto)
+    elif descripcion == "traslados nuevos sin comprobantes":
+        await _traslado_nuevo(pg, origen=punto)
+    elif descripcion == "usuarios del dashboard asignados":
+        usuario_dash = await nuevo_usuario_dashboard(pg, f"p{uuid4().hex[:6]}")
+        await pg.execute("update usuarios_dashboard set punto_id = $1::uuid where id = $2::uuid", punto, usuario_dash)
     else:  # pragma: no cover
         raise AssertionError(descripcion)
 
@@ -366,6 +393,9 @@ async def test_usuario_dashboard_con_rastro_no_se_borra(pg, descripcion):
         # Novedad resuelta desde el dashboard: queda ligada al usuario por solucionado_por_usuario.
         punto, otro, usuario = await _punto_y_usuario(pg)
         await insertar_traslado(pg, punto, otro, usuario, solucionado_por_usuario=UUID(objetivo))
+    elif descripcion == "comprobantes firmados":
+        punto = await crear_punto(pg, f"C-{uuid4().hex[:6]}", f"C{uuid4().hex[:5]}")
+        await _comprobante_nuevo(pg, punto, responsable=objetivo)
     else:  # pragma: no cover
         raise AssertionError(descripcion)
 
