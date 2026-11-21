@@ -33,7 +33,7 @@ class DatoInvalido(Exception):
 _COLUMNAS_EDITABLES = {
     "sedes": ("nombre", "direccion", "activa"),
     "empleados": ("nombre", "sede_id", "rol", "estado"),
-    "puntos": ("nombre", "activo"),
+    "puntos": ("nombre", "activo", "es_interna"),
     "usuarios_punto": ("nombre", "estado"),
     "supervisores": ("nombre", "estado"),
 }

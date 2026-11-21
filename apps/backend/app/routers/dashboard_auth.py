@@ -64,21 +64,39 @@ async def listar_usuarios(_: dict = Depends(requiere_rol("admin"))) -> list[dict
 @router.post("/dashboard/usuarios", status_code=201)
 async def crear_usuario(payload: UsuarioDashboardCrear, admin: dict = Depends(requiere_rol("admin"))) -> dict:
     try:
-        return await servicio.crear(admin, payload.usuario, payload.nombre, payload.rol, payload.password, payload.area)
+        return await servicio.crear(
+            admin,
+            payload.usuario,
+            payload.nombre,
+            payload.rol,
+            payload.password,
+            payload.area,
+            payload.punto_id,
+            payload.cedula,
+        )
     except servicio.UsuarioDuplicado as exc:
         raise HTTPException(status_code=409, detail="Ese usuario ya existe") from exc
+    except servicio.DatoUsuarioInvalido as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.patch("/dashboard/usuarios/{usuario_id}")
 async def actualizar_usuario(
     usuario_id: UUID, payload: UsuarioDashboardActualizar, admin: dict = Depends(requiere_rol("admin"))
 ) -> dict:
+    cambios = payload.model_dump(exclude_none=True)
+    # punto_id y cedula: un null enviado a proposito significa "quitar".
+    for clave in ("punto_id", "cedula"):
+        if clave in payload.model_fields_set and getattr(payload, clave) is None:
+            cambios[clave] = None
     try:
-        return await servicio.actualizar(admin, str(usuario_id), payload.model_dump(exclude_none=True))
+        return await servicio.actualizar(admin, str(usuario_id), cambios)
     except servicio.UsuarioNoEncontrado as exc:
         raise HTTPException(status_code=404, detail="Usuario no encontrado") from exc
     except servicio.ReglaAdmin as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except servicio.DatoUsuarioInvalido as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.delete("/dashboard/usuarios/{usuario_id}")

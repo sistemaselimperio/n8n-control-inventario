@@ -45,6 +45,8 @@ def fila_usuario_dashboard(
     bloqueado: bool = False,
     segundos_bloqueo: float | None = None,
     usuario: str = "ana",
+    punto_id: str | None = None,
+    cedula: str | None = None,
 ) -> dict:
     sal = generar_sal()
     return {
@@ -53,6 +55,8 @@ def fila_usuario_dashboard(
         "nombre": "Ana Prueba",
         "rol": rol,
         "area": area,
+        "punto_id": punto_id,
+        "cedula": cedula,
         "pass_salt": sal,
         "pass_hash": hashear_password(password, sal),
         "activo": activo,

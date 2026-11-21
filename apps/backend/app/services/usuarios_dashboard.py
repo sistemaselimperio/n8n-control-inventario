@@ -52,6 +52,11 @@ class PasswordIncorrecta(Exception):
     pass
 
 
+class DatoUsuarioInvalido(Exception):
+    """Combinacion de datos que no tiene sentido (p. ej. punto en un usuario
+    que no es del area traslados, o un punto que no existe) -- 422 en el router."""
+
+
 def _publico(fila: asyncpg.Record) -> dict:
     return {
         "id": str(fila["id"]),
@@ -59,6 +64,8 @@ def _publico(fila: asyncpg.Record) -> dict:
         "nombre": fila["nombre"],
         "rol": fila["rol"],
         "area": area_efectiva(fila["rol"], fila["area"]),
+        "punto_id": None if fila.get("punto_id") is None else str(fila["punto_id"]),
+        "cedula": fila.get("cedula"),
     }
 
 
@@ -164,28 +171,51 @@ async def _registrar_cambio(actor: dict, entidad_id: str, accion: str, detalle: 
     )
 
 
-async def crear(actor: dict, usuario: str, nombre: str, rol: str, password: str, area: str = "todo") -> dict:
+def _validar_punto(rol: str, area: str, punto_id: str | None) -> None:
+    """El punto solo tiene sentido en un usuario del area traslados (no admin)."""
+    if punto_id is not None and (rol == "admin" or area != "traslados"):
+        raise DatoUsuarioInvalido("Solo un usuario del área traslados puede tener un punto asignado")
+
+
+async def crear(
+    actor: dict,
+    usuario: str,
+    nombre: str,
+    rol: str,
+    password: str,
+    area: str = "todo",
+    punto_id: str | None = None,
+    cedula: str | None = None,
+) -> dict:
     # El admin siempre es area "todo", sea lo que sea que llegue.
     area = area_efectiva(rol, area)
+    _validar_punto(rol, area, punto_id)
     sal = generar_sal()
     pool = await get_pool()
     try:
         fila = await pool.fetchrow(
             """
-            insert into usuarios_dashboard (usuario, nombre, rol, area, pass_hash, pass_salt)
-            values ($1, $2, $3, $4, $5, $6) returning *
+            insert into usuarios_dashboard (usuario, nombre, rol, area, punto_id, cedula, pass_hash, pass_salt)
+            values ($1, $2, $3, $4, $5::uuid, $6, $7, $8) returning *
             """,
             usuario,
             nombre,
             rol,
             area,
+            punto_id,
+            cedula,
             hashear_password(password, sal),
             sal,
         )
     except asyncpg.UniqueViolationError as exc:
         raise UsuarioDuplicado() from exc
+    except asyncpg.ForeignKeyViolationError as exc:
+        raise DatoUsuarioInvalido("El punto indicado no existe") from exc
     await _registrar_cambio(
-        actor, str(fila["id"]), "creado", {"usuario": usuario, "nombre": nombre, "rol": rol, "area": area}
+        actor,
+        str(fila["id"]),
+        "creado",
+        {"usuario": usuario, "nombre": nombre, "rol": rol, "area": area, "punto_id": punto_id},
     )
     return _completo(fila)
 
@@ -215,18 +245,37 @@ async def actualizar(actor: dict, usuario_id: str, cambios: dict) -> dict:
                     raise ReglaAdmin("Debe quedar al menos un administrador activo")
 
             efectivos = {k: v for k, v in cambios.items() if k in ("nombre", "rol", "area", "activo") and v is not None}
+            # punto_id y cedula si admiten None (quitar el valor): basta con que la clave venga.
+            for clave in ("punto_id", "cedula"):
+                if clave in cambios:
+                    efectivos[clave] = cambios[clave]
             # Un admin queda siempre en area "todo": si el rol resultante es
             # admin se fuerza, y si cambia el rol a admin se normaliza el area.
             rol_resultante = efectivos.get("rol", actual["rol"])
             if rol_resultante == "admin" and (efectivos.get("area") or actual["area"]) != "todo":
                 efectivos["area"] = "todo"
+            # El punto solo vive en el area traslados: si el usuario sale de ella
+            # (o pasa a admin) se le quita; pedir uno estando fuera es un error.
+            area_resultante = efectivos.get("area", actual["area"])
+            if efectivos.get("punto_id") is not None:
+                _validar_punto(rol_resultante, area_resultante, efectivos["punto_id"])
+            elif (rol_resultante == "admin" or area_resultante != "traslados") and (
+                "punto_id" in efectivos or actual.get("punto_id") is not None
+            ):
+                efectivos["punto_id"] = None
             if efectivos:
-                asignaciones = ", ".join(f"{col} = ${i}" for i, col in enumerate(efectivos, start=2))
-                fila = await conn.fetchrow(
-                    f"update usuarios_dashboard set {asignaciones} where id = $1::uuid returning *",
-                    usuario_id,
-                    *efectivos.values(),
+                asignaciones = ", ".join(
+                    f"{col} = ${i}" + ("::uuid" if col == "punto_id" else "")
+                    for i, col in enumerate(efectivos, start=2)
                 )
+                try:
+                    fila = await conn.fetchrow(
+                        f"update usuarios_dashboard set {asignaciones} where id = $1::uuid returning *",
+                        usuario_id,
+                        *efectivos.values(),
+                    )
+                except asyncpg.ForeignKeyViolationError as exc:
+                    raise DatoUsuarioInvalido("El punto indicado no existe") from exc
             else:
                 fila = actual
     if efectivos:

@@ -164,6 +164,13 @@ _CHEQUEOS_PUNTO: list[Chequeo] = [
     ),
     ("talonarios", "select 1 from talonarios_punto where punto_id = $1::uuid"),
     ("eventos en el historial", "select 1 from logs where sede_id = $1 and evento <> 'admin_cambio'"),
+    # Modulo Traslados (tablas traslados / traslado_comprobantes, todas con FK al punto).
+    ("comprobantes de traslados", "select 1 from traslado_comprobantes where punto_id = $1::uuid"),
+    (
+        "traslados nuevos sin comprobantes",
+        "select 1 from traslados where origen_punto_id = $1::uuid or destino_punto_id = $1::uuid",
+    ),
+    ("usuarios del dashboard asignados", "select 1 from usuarios_dashboard where punto_id = $1::uuid"),
     # Va al final: borrar un punto con usuarios fallaria por FK aunque no
     # tuvieran historial; se pide eliminarlos (o desactivar el punto) antes.
     ("usuarios asignados", "select 1 from usuarios_punto where punto_id = $1::uuid"),
@@ -260,6 +267,7 @@ _ACTOR = "'dashboard:' || (select usuario from usuarios_dashboard where id = $1:
 _CHEQUEOS_USUARIO_DASHBOARD: list[Chequeo] = [
     ("novedades resueltas", "select 1 from traslados_puntos where solucionado_por_usuario = $1::uuid"),
     ("eventos en el historial", f"select 1 from logs where actor_id = {_ACTOR}"),
+    ("comprobantes firmados", "select 1 from traslado_comprobantes where responsable_usuario_id = $1::uuid"),
     (
         "intentos de ingreso registrados",
         "select 1 from logs where entidad_id = $1 and entidad_tipo = 'usuario_dashboard' and evento <> 'admin_cambio'",

@@ -231,7 +231,7 @@ async def test_login_correcto_devuelve_token_usable(cliente, pool, conn):
     res = await cliente.post("/dashboard/auth/login", json={"usuario": " ANA ", "password": "clave-segura-1"})
     assert res.status_code == 200
     cuerpo = res.json()
-    assert cuerpo["usuario"] == {"id": fila["id"], "usuario": "ana", "nombre": "Ana Prueba", "rol": "admin", "area": "todo"}
+    assert cuerpo["usuario"] == {"id": fila["id"], "usuario": "ana", "nombre": "Ana Prueba", "rol": "admin", "area": "todo", "punto_id": None, "cedula": None}
     assert sesion.verificar(cuerpo["token"], sesion.obtener_secreto())["sub"] == fila["id"]
     # Consulta normalizada y resultado registrado sin contrasena.
     assert conn.llamadas[0][2] == ("ana",)

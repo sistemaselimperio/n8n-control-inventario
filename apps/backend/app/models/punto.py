@@ -42,6 +42,8 @@ class PinLoginPunto(BaseModel):
 class PuntoActualizar(BaseModel):
     nombre: str | None = None
     activo: bool | None = None
+    # Bodega propia (TB8, TB9...): en el modulo de traslados no genera comprobantes.
+    es_interna: bool | None = None
 
 
 class UsuarioPuntoActualizar(BaseModel):

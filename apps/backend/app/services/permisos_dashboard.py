@@ -68,7 +68,8 @@ async def _usuario_desde_header(authorization: str | None) -> dict | None:
         raise HTTPException(status_code=401, detail=_MSG_SESION_EXPIRADA) from None
     pool = await get_pool()
     fila = await pool.fetchrow(
-        "select id, usuario, nombre, rol, area from usuarios_dashboard where id = $1::uuid and activo = true",
+        "select id, usuario, nombre, rol, area, punto_id, cedula from usuarios_dashboard "
+        "where id = $1::uuid and activo = true",
         usuario_id,
     )
     if fila is None:
@@ -79,6 +80,10 @@ async def _usuario_desde_header(authorization: str | None) -> dict | None:
         "nombre": fila["nombre"],
         "rol": fila["rol"],
         "area": area_efectiva(fila["rol"], fila["area"]),
+        # Modulo de traslados: punto asignado (None = encargada o sin alcance)
+        # y cedula con la que firma confirmaciones y devoluciones.
+        "punto_id": None if fila.get("punto_id") is None else str(fila["punto_id"]),
+        "cedula": fila.get("cedula"),
     }
 
 

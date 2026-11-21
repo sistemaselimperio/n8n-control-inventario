@@ -621,7 +621,7 @@ async def test_listar_puntos_es_publico_y_solo_trae_activos(cliente, pool, conn)
 
 
 async def test_listar_puntos_inactivos_con_token_agrega_el_campo_activo(cliente, pool, conn, admin_headers):
-    conn.responder("fetch", "from puntos order by activo", [{"id": uuid.UUID(PUNTO_ORIGEN), "nombre": "CFC", "codigo": "CFC", "activo": False}])
+    conn.responder("fetch", "from puntos order by activo", [{"id": uuid.UUID(PUNTO_ORIGEN), "nombre": "CFC", "codigo": "CFC", "activo": False, "es_interna": False}])
     res = await cliente.get("/puntos", params={"incluir_inactivos": "true"}, headers=admin_headers)
     assert res.json()[0]["activo"] is False
 

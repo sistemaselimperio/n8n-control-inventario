@@ -80,3 +80,18 @@ class EventoLog(StrEnum):
     TALONARIO_CONFIGURADO = "talonario_configurado"
     # Se anulo la siguiente hoja pendiente de un talonario (con motivo).
     TALONARIO_HOJA_ANULADA = "talonario_hoja_anulada"
+    # Modulo Traslados (comprobantes de salida e ingreso, ver
+    # app/services/traslados.py). El historial de cada comprobante se lee de
+    # estos eventos (entidad_tipo 'traslado_comprobante'); los del traslado en
+    # si usan entidad_tipo 'traslado'.
+    TRASLADO_CREADO = "traslado_creado"
+    TRASLADO_EDITADO = "traslado_editado"
+    TRASLADO_ENVIADO = "traslado_enviado"
+    TRASLADO_ELIMINADO = "traslado_eliminado"
+    # Se intento cargar un comprobante que ya existe; el evento queda en el
+    # historial del comprobante original.
+    TRASLADO_DUPLICADO_BLOQUEADO = "traslado_duplicado_bloqueado"
+    TRASLADO_COMPROBANTE_CREADO = "traslado_comprobante_creado"
+    TRASLADO_COMPROBANTE_CONFIRMADO = "traslado_comprobante_confirmado"
+    TRASLADO_COMPROBANTE_DEVUELTO = "traslado_comprobante_devuelto"
+    TRASLADO_COMPROBANTE_REENVIADO = "traslado_comprobante_reenviado"

@@ -687,6 +687,99 @@ alter table traslados_puntos add column if not exists anulado_por text;
 alter table traslado_punto_items add column if not exists referencia text;
 alter table traslado_punto_items add column if not exists precio numeric(14, 2);
 
+-- Modulo "Traslados" (comprobantes de salida e ingreso entre puntos, ver
+-- app/services/traslados.py). Un punto "interno" (TB8, TB9, TBE, TB) es una
+-- bodega propia que no firma comprobantes. La columna se agrega y se siembra
+-- UNA sola vez, dentro del mismo bloque: si el bloque corriera el update en
+-- cada arranque pisaria lo que despues se edite desde /creador. El "add column
+-- if not exists" de adentro es solo cinturon de seguridad ante una carrera.
+do $$
+begin
+    if not exists (
+        select 1 from information_schema.columns
+        where table_schema = current_schema() and table_name = 'puntos' and column_name = 'es_interna'
+    ) then
+        alter table puntos add column if not exists es_interna boolean not null default false;
+        update puntos set es_interna = true where codigo in ('TB8', 'TB9', 'TBE', 'TB');
+    end if;
+end $$;
+
+-- Punto asignado y cedula del usuario del dashboard: la encargada de traslados
+-- (area 'traslados', sin punto) ve todo; un usuario con punto solo ve y firma
+-- los comprobantes de ese punto con su propia cedula.
+alter table usuarios_dashboard add column if not exists punto_id uuid references puntos(id);
+alter table usuarios_dashboard add column if not exists cedula text;
+create index if not exists idx_usuarios_dashboard_punto on usuarios_dashboard (punto_id) where punto_id is not null;
+
+-- Traslado = un PDF "TRASLADO ENTRE BODEGAS" del sistema contable. 'borrador'
+-- cuando no se pudo determinar numero, origen o destino (advertencias dice que
+-- falta y la encargada lo completa a mano); 'enviado' cuando ya genero sus
+-- comprobantes. `archivos` lista TODA ruta subida a Storage para este traslado
+-- (PDF original, PDFs de reemplazo, firmas) para poder borrarlas con el
+-- borrado definitivo; pdf_ruta es solo el PDF vigente.
+create table if not exists traslados (
+    id uuid primary key default gen_random_uuid(),
+    numero text,
+    archivo_nombre text not null default '',
+    pdf_ruta text,
+    estado text not null default 'borrador',
+    advertencias jsonb not null default '[]',
+    fecha date,
+    concepto text,
+    elaboro text,
+    origen_texto text,
+    destino_texto text,
+    items jsonb not null default '[]',
+    origen_punto_id uuid references puntos(id),
+    destino_punto_id uuid references puntos(id),
+    archivos jsonb not null default '[]',
+    creado_por text not null,
+    creado_at timestamptz not null default now(),
+    actualizado_at timestamptz not null default now(),
+    enviado_at timestamptz
+);
+
+alter table traslados drop constraint if exists traslados_estado_check;
+alter table traslados add constraint traslados_estado_check check (estado in ('borrador', 'enviado'));
+create index if not exists idx_traslados_estado_creado on traslados (estado, creado_at desc);
+
+-- Comprobante = lo que firma un punto: SALIDA para el punto de origen e
+-- INGRESO para el de destino (cada lado es independiente, sin orden). Un lado
+-- interno no genera comprobante. El unico (numero, punto_id, tipo) es la
+-- barrera real contra el mismo traslado cargado dos veces; unique (traslado_id,
+-- tipo) garantiza a lo mas uno por lado. responsable_* es la ultima persona que
+-- confirmo o devolvio (nombre y cedula copiados de su usuario).
+create table if not exists traslado_comprobantes (
+    id uuid primary key default gen_random_uuid(),
+    traslado_id uuid not null references traslados(id) on delete cascade,
+    numero text not null,
+    tipo text not null,
+    punto_id uuid not null references puntos(id),
+    estado text not null default 'pendiente',
+    responsable_usuario_id uuid,
+    responsable_nombre text,
+    responsable_cedula text,
+    firma_ruta text,
+    observacion text,
+    motivo_devolucion text,
+    resuelto_at timestamptz,
+    creado_at timestamptz not null default now(),
+    actualizado_at timestamptz not null default now()
+);
+
+alter table traslado_comprobantes drop constraint if exists traslado_comprobantes_tipo_check;
+alter table traslado_comprobantes add constraint traslado_comprobantes_tipo_check
+    check (tipo in ('salida', 'ingreso'));
+alter table traslado_comprobantes drop constraint if exists traslado_comprobantes_estado_check;
+alter table traslado_comprobantes add constraint traslado_comprobantes_estado_check
+    check (estado in ('pendiente', 'confirmado', 'devuelto'));
+create unique index if not exists traslado_comprobantes_numero_punto_tipo_key
+    on traslado_comprobantes (numero, punto_id, tipo);
+create unique index if not exists traslado_comprobantes_traslado_tipo_key
+    on traslado_comprobantes (traslado_id, tipo);
+create index if not exists idx_traslado_comprobantes_punto_estado
+    on traslado_comprobantes (punto_id, estado, creado_at desc);
+
 -- Realtime de Supabase: sin esto el dashboard no recibe push de cambios,
 -- solo podria hacer polling. Falla silenciosamente (DO block) si ya estaban
 -- agregadas o si la publicacion no existe (p.ej. Postgres self-hosted sin
@@ -728,6 +821,14 @@ begin
         end;
         begin
             alter publication supabase_realtime add table facturas_faltantes;
+        exception when duplicate_object then null;
+        end;
+        begin
+            alter publication supabase_realtime add table traslados;
+        exception when duplicate_object then null;
+        end;
+        begin
+            alter publication supabase_realtime add table traslado_comprobantes;
         exception when duplicate_object then null;
         end;
     end if;

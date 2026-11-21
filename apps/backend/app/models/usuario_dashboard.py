@@ -1,5 +1,6 @@
 import re
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -23,6 +24,28 @@ def _usuario_valido(valor: str) -> str:
     return valor
 
 
+def normalizar_cedula(valor: str | None) -> str | None:
+    """Cedula solo con digitos (acepta puntos y espacios al escribirla); vacia
+    cuenta como "sin cedula". Se guarda como texto: no se hacen cuentas con ella."""
+    if valor is None:
+        return None
+    limpia = re.sub(r"[.\s]", "", valor)
+    if not limpia:
+        return None
+    if not re.fullmatch(r"\d{5,15}", limpia):
+        raise ValueError("La cédula debe tener entre 5 y 15 dígitos")
+    return limpia
+
+
+def _punto_valido(valor: str | None) -> str | None:
+    if valor is None:
+        return None
+    try:
+        return str(UUID(valor))
+    except ValueError:
+        raise ValueError("El punto no es válido") from None
+
+
 class LoginRequest(BaseModel):
     usuario: str = Field(min_length=1, max_length=100)
     password: str = Field(min_length=1, max_length=PASSWORD_MAX)
@@ -38,7 +61,22 @@ class UsuarioDashboardCrear(BaseModel):
     nombre: str = Field(min_length=1, max_length=100)
     rol: RolDashboard
     area: AreaDashboard = "todo"
+    # Solo area "traslados": con punto el usuario ve y resuelve los comprobantes
+    # de ese punto; sin punto es la encargada (ve todos). La cedula la firma el
+    # usuario al confirmar o devolver un comprobante (ver app/services/traslados.py).
+    punto_id: str | None = None
+    cedula: str | None = None
     password: str = Field(min_length=PASSWORD_MIN, max_length=PASSWORD_MAX)
+
+    @field_validator("punto_id")
+    @classmethod
+    def _punto(cls, v: str | None) -> str | None:
+        return _punto_valido(v)
+
+    @field_validator("cedula")
+    @classmethod
+    def _cedula(cls, v: str | None) -> str | None:
+        return normalizar_cedula(v)
 
     @field_validator("usuario")
     @classmethod
@@ -61,6 +99,10 @@ class UsuarioDashboardActualizar(BaseModel):
     rol: RolDashboard | None = None
     area: AreaDashboard | None = None
     activo: bool | None = None
+    # A diferencia del resto, aqui un null EXPLICITO quita el valor (el router
+    # distingue "no enviado" de null con model_fields_set).
+    punto_id: str | None = None
+    cedula: str | None = None
 
     @field_validator("nombre")
     @classmethod
@@ -71,6 +113,16 @@ class UsuarioDashboardActualizar(BaseModel):
         if not v:
             raise ValueError("El nombre no puede quedar vacío")
         return v
+
+    @field_validator("punto_id")
+    @classmethod
+    def _punto(cls, v: str | None) -> str | None:
+        return _punto_valido(v)
+
+    @field_validator("cedula")
+    @classmethod
+    def _cedula(cls, v: str | None) -> str | None:
+        return normalizar_cedula(v)
 
 
 class PasswordNueva(BaseModel):

@@ -105,10 +105,18 @@ async def listar_puntos(
     if incluir_inactivos:
         await autorizar_admin(authorization, x_admin_token)
         rows = await pool.fetch(
-            "select id, nombre, codigo, activo from puntos order by activo desc, codigo nulls last, nombre"
+            "select id, nombre, codigo, activo, es_interna from puntos "
+            "order by activo desc, codigo nulls last, nombre"
         )
         return [
-            {"id": str(r["id"]), "nombre": r["nombre"], "codigo": r["codigo"], "activo": r["activo"]} for r in rows
+            {
+                "id": str(r["id"]),
+                "nombre": r["nombre"],
+                "codigo": r["codigo"],
+                "activo": r["activo"],
+                "es_interna": r["es_interna"],
+            }
+            for r in rows
         ]
     rows = await pool.fetch(
         "select id, nombre, codigo from puntos where activo = true order by codigo nulls last, nombre"
