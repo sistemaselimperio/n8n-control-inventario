@@ -41,7 +41,6 @@ import {
   fetchFacturasFaltantes,
   fetchFacturasYaSubidas,
   fetchResumenHoy,
-  fetchTrasladosPunto,
 } from './api';
 import type { TabsParamList } from './Navegacion';
 import { lugarSesion, tieneAcceso, useSesion, type Sesion } from './SesionContext';
@@ -53,7 +52,6 @@ import {
   NEUTRAL_400,
   TEXTO_PRIMARIO,
 } from './tema';
-import TarjetaTalonario from './TarjetaTalonario';
 import { MARCA } from './vidrio';
 
 // Sin numero de version a proposito: "version" de app.json entra en el
@@ -96,13 +94,12 @@ const VIDRIO_ENCABEZADO = 'rgba(8,22,51,0.35)';
 // Consejos que rotan en el carrusel de Inicio (ver CarruselConsejos). Para
 // agregar o cambiar consejos, editar esta lista: llega por EAS Update sin
 // tocar el backend.
-type AreaConsejo = 'despachos' | 'traslados' | 'general';
+type AreaConsejo = 'despachos' | 'general';
 
 // Etiqueta de area de cada consejo -- mismos iconos que las tabs del menu
 // de abajo (ver Navegacion.tsx), para que se asocie de un vistazo.
 const AREAS_CONSEJO: Record<AreaConsejo, { texto: string; icono: keyof typeof Ionicons.glyphMap; color: string }> = {
   despachos: { texto: 'Despachos', icono: 'cube-outline', color: '#60a5fa' },
-  traslados: { texto: 'Traslados', icono: 'swap-horizontal', color: '#34d399' },
   general: { texto: 'General', icono: 'information-circle-outline', color: '#fbbf24' },
 };
 
@@ -110,31 +107,21 @@ const AREAS_CONSEJO: Record<AreaConsejo, { texto: string; icono: keyof typeof Io
 // lo mismo.
 const CONSEJOS: { area: AreaConsejo; icono: keyof typeof Ionicons.glyphMap; texto: string }[] = [
   { area: 'despachos', icono: 'camera-outline', texto: 'Toma la foto de la factura con buena luz y sin sombras: la lectura automática es más precisa.' },
-  { area: 'traslados', icono: 'cube-outline', texto: 'Cuenta la mercancía antes de firmar como quien despacha. Una vez firmado, el traslado queda registrado.' },
   { area: 'general', icono: 'cloud-offline-outline', texto: 'Si ves «Sin conexión al servidor», espera a tener señal antes de enviar.' },
   { area: 'despachos', icono: 'scan-outline', texto: 'Antes de confirmar, revisa que el número de factura detectado coincida con el del papel.' },
-  { area: 'traslados', icono: 'car-outline', texto: 'El conductor debe revisar la carga antes de firmar: su firma confirma lo que se lleva.' },
   { area: 'general', icono: 'log-out-outline', texto: 'Cierra sesión al terminar tu turno para que nadie trabaje con tu usuario.' },
   { area: 'despachos', icono: 'create-outline', texto: 'Si la lectura automática se equivocó en un producto, corrige el nombre antes de confirmar.' },
-  { area: 'traslados', icono: 'alert-circle-outline', texto: 'Al recibir, si algo llegó incompleto o dañado, toca «Con observación» y anota la novedad.' },
   { area: 'general', icono: 'rainy-outline', texto: 'Si va a llover, cubre la carga antes de que el vehículo salga de la bodega.' },
   { area: 'despachos', icono: 'layers-outline', texto: 'Si la entrega es parcial, registra solo lo que sale hoy: lo pendiente queda abierto para la próxima.' },
-  { area: 'traslados', icono: 'list-outline', texto: 'Escribe los productos igual que en el papel: cantidad, nombre, marca y presentación.' },
-  { area: 'traslados', icono: 'download-outline', texto: 'Revisa «Por recibir» al llegar un vehículo: ahí aparecen los traslados que vienen a tu punto.' },
   { area: 'despachos', icono: 'search-outline', texto: 'Si no tienes la foto a mano, puedes buscar la factura por su número para actualizarla.' },
-  { area: 'traslados', icono: 'chatbox-ellipses-outline', texto: 'Usa las observaciones para lo que no está en el papel: horarios, entregas parciales o avisos.' },
   { area: 'general', icono: 'wifi-outline', texto: 'Mira la pastilla de conexión arriba: si dice «Conectado», puedes enviar sin problema.' },
   { area: 'despachos', icono: 'document-text-outline', texto: 'Las remisiones (RM2, RM3 y RSF) se fotografían en la pestaña Remisiones, no en Despachos.' },
-  { area: 'traslados', icono: 'location-outline', texto: 'Antes de enviar un traslado, confirma que el punto de destino sea el correcto.' },
   { area: 'general', icono: 'key-outline', texto: 'Tu PIN es personal: no lo compartas con nadie, ni siquiera con un compañero.' },
   { area: 'despachos', icono: 'eye-outline', texto: 'Si la foto sale borrosa, repítela: una foto nítida evita que el documento quede en revisión.' },
-  { area: 'traslados', icono: 'add-circle-outline', texto: 'Si llegó más mercancía de la enviada, también es una novedad: regístrala al recibir.' },
   { area: 'general', icono: 'battery-charging-outline', texto: 'Empieza el turno con el celular cargado: la cámara y la conexión gastan batería.' },
   { area: 'despachos', icono: 'scan-circle-outline', texto: 'Fotografía el documento completo, con los cuatro bordes a la vista y sin dedos encima.' },
-  { area: 'traslados', icono: 'time-outline', texto: 'Recibe el traslado apenas llegue el vehículo: así el inventario del punto queda al día.' },
   { area: 'despachos', icono: 'repeat-outline', texto: 'Un documento se puede entregar en varias visitas: cada vez vuelve a fotografiarlo y registra lo que sale.' },
   { area: 'despachos', icono: 'copy-outline', texto: 'Si un documento ya se entregó completo, la app te avisará que está duplicado: no hace falta registrarlo otra vez.' },
-  { area: 'traslados', icono: 'create-outline', texto: 'Al firmar, hazlo dentro del recuadro y con trazo firme para que la firma se lea bien.' },
   { area: 'general', icono: 'apps-outline', texto: 'Toca los pendientes del Inicio para ir directo a esa sección.' },
 ];
 
@@ -542,20 +529,9 @@ async function cargarPendientes(sesion: Sesion): Promise<Pendiente[]> {
     case 'bodega':
       if (sesion.empleado.rol === 'punto_venta') return filasMostrador(sesion.sede.id);
       return filasBodega(sesion.sede.id);
-    case 'punto': {
-      const lista = await fetchTrasladosPunto({ destinoId: sesion.punto.id, estado: 'en_transito' });
-      return [
-        {
-          clave: 'por_recibir',
-          texto: 'Traslados por recibir',
-          cantidad: lista.length,
-          icono: 'download-outline',
-          // initial: false -- deja InicioTraslados debajo, para que "volver"
-          // desde la bandeja no saque de la tab.
-          abrir: (nav) => nav.navigate('TrasladosPuntos', { screen: 'BandejaRecepcion', initial: false }),
-        },
-      ];
-    }
+    case 'punto':
+      // Traslados esta oculto a proposito: no se consulta ni se enlaza desde Inicio.
+      return [];
   }
 }
 
@@ -742,10 +718,7 @@ export default function PantallaInicio() {
               </Presionable>
             ) : null}
 
-            {/* Talonario del punto: solo en sesiones de punto (traslados). */}
-            {sesion.tipo === 'punto' ? (
-              <TarjetaTalonario puntoId={sesion.punto.id} usuarioId={sesion.usuario.id} />
-            ) : null}
+            {/* Talonario del punto oculto junto con Traslados (TarjetaTalonario se conserva). */}
 
             <Pendientes />
           </Animated.View>

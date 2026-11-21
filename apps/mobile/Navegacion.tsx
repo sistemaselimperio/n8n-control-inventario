@@ -25,6 +25,7 @@ import { TrasladoProvider } from './TrasladoContext';
 import { SesionProvider, tieneAcceso, useSesion, type AreaApp, type Sesion } from './SesionContext';
 import PantallaEntrada from './PantallaEntrada';
 import SinAcceso from './SinAcceso';
+import PuntoNoDisponible from './PuntoNoDisponible';
 import PantallaCapturaFoto from './PantallaCapturaFoto';
 import PantallaBuscar from './PantallaBuscar';
 import PantallaConfirmando from './PantallaConfirmando';
@@ -225,7 +226,8 @@ function TabsPrincipales() {
         }}
       />
       <Tabs.Screen name="Despachos" component={Despachos} options={opcionesArea('Despachos')} />
-      <Tabs.Screen name="TrasladosPuntos" component={Traslados} options={opcionesArea('TrasladosPuntos')} />
+      {/* Traslados esta oculto a proposito: las pantallas, el contexto y las
+          funciones de api.ts se conservan, pero la tab no se registra. */}
       <Tabs.Screen name="Remisiones" component={Remisiones} options={opcionesArea('Remisiones')} />
     </Tabs.Navigator>
   );
@@ -250,7 +252,8 @@ export default function Navegacion() {
         <RootStack.Screen name="Principal">
           {() => (
             <SesionProvider value={valorSesion}>
-              <TabsPrincipales />
+              {/* Las sesiones de punto solo usaban Traslados (oculto): aviso en vez de tabs. */}
+              {sesion.tipo === 'punto' ? <PuntoNoDisponible /> : <TabsPrincipales />}
             </SesionProvider>
           )}
         </RootStack.Screen>
