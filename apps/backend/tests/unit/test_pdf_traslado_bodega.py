@@ -149,3 +149,41 @@ def test_sugerir_punto_por_nombre_ignora_prefijo_bodega_y_codigo():
     assert pdf.sugerir_punto("BODEGA PUENTE DE TIERRA", puntos)["id"] == "p2"
     assert pdf.sugerir_punto("BODEGA OTRA", puntos) is None
     assert pdf.sugerir_punto("", puntos) is None
+
+
+# Formato con columna COSTO (encabezado "REF/COD ... COSTODETALLEEMBCANTPRECIO"):
+# el costo sale pegado al detalle y puede venir enmascarado o negativo.
+_TEXTO_CON_COSTO = """ COMERCIALIZADORA EL IMPERIO                                       TRASLADO ENTRE BODEGAS
+ PAEZ LANCHEROS FABIAN LEONARDO                                    CUCAITA No:
+ Nit: 74439231-1                                       _7LS0KXLBT                       CUB - 535
+
+ Concepto        SUGERIDO BULTOS CUCAITA 09-11                     Pág:         1               Nov-10-2026
+
+ REF/COD                                                           COSTODETALLEEMBCANTPRECIO
+
+1272                         147,318.2318-18-18 NUTRIMON BULTO                    10.00        0.00
+16062                        **,***,***.**C. CERDO LEVANTE P BULTO                10.00        0.00
+03462                        -113,874.06SAL M/DA 12% X 40 KILOS BULTO              2.00        0.00
+
+ Bodega:     01       BODEGA VENTAS                    Peso         Totales        22.00         0.00      ****,***,***.**
+ Destino:    35       BODEGA CUCAITA
+
+
+    Elaboró                        Revisó                           Aprobó
+
+ YOHANA
+"""
+
+
+def test_formato_con_columna_costo():
+    datos = pdf.parsear_traslado_bodega(_TEXTO_CON_COSTO)
+    assert datos["numero"] == "CUB-535"
+    assert datos["fecha"] == "2026-11-10"
+    assert "BODEGA VENTAS" in datos["origen"]
+    assert "BODEGA CUCAITA" in datos["destino_texto"]
+    assert [(i["referencia"], i["detalle"], i["empaque"], i["cantidad"]) for i in datos["items"]] == [
+        ("1272", "18-18-18 NUTRIMON", "BULTO", 10),
+        ("16062", "C. CERDO LEVANTE P", "BULTO", 10),
+        ("03462", "SAL M/DA 12% X 40 KILOS", "BULTO", 2),
+    ]
+    assert datos["advertencias"] == []
