@@ -11,7 +11,7 @@ import {
   resetearPasswordUsuarioDashboard,
 } from "@/lib/api";
 import { useSesion } from "@/lib/SesionProvider";
-import { ETIQUETA_AREA, ETIQUETA_ROL, type AreaDashboard, type RolDashboard } from "@/lib/sesion";
+import { ETIQUETA_AREA, ETIQUETA_ROL, normalizarArea, type AreaDashboard, type RolDashboard } from "@/lib/sesion";
 import { ErrorConReintento, Panel } from "@/components/ui";
 import {
   INPUT,
@@ -247,7 +247,7 @@ export function SeccionUsuariosDashboard() {
                       {esYo ? <span className="ml-1 text-xs text-muted">(tú)</span> : null}
                       <span className="ml-2 text-xs text-muted">{u.usuario}</span>
                       <span className="ml-2 text-xs text-muted">
-                        {ETIQUETA_ROL[u.rol]}, área {ETIQUETA_AREA[u.area ?? "todo"].toLowerCase()}
+                        {ETIQUETA_ROL[u.rol]}, área {ETIQUETA_AREA[normalizarArea(u.area)].toLowerCase()}
                       </span>
                       <span className="block text-xs text-subtle">
                         Último ingreso: {fechaCorta(u.ultimo_login_at) ?? "nunca"}
@@ -261,7 +261,7 @@ export function SeccionUsuariosDashboard() {
                       className={BOTON_LINK}
                       onClick={() => {
                         setEditandoId(u.id);
-                        setEdit({ nombre: u.nombre, rol: u.rol, area: u.area ?? "todo" });
+                        setEdit({ nombre: u.nombre, rol: u.rol, area: normalizarArea(u.area) });
                       }}
                     >
                       Editar

@@ -1,6 +1,6 @@
 "use client";
 
-// Piezas compartidas de las barras de filtros (Entregas y Traslados):
+// Piezas compartidas de las barras de filtros (Entregas):
 // pestañas subrayadas con conteo, el boton-menu "Etiqueta: valor" y los
 // atajos de fecha (Hoy, Ultimos 7 dias, Este mes, Elegir fechas).
 

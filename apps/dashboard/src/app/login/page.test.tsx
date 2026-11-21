@@ -99,9 +99,9 @@ describe("pagina de login", () => {
 
   it("con sesion ya iniciada redirige al destino pedido", async () => {
     iniciarSesionDePrueba();
-    nav.params = new URLSearchParams("siguiente=/traslados");
+    nav.params = new URLSearchParams("siguiente=/ranking");
     montar();
-    await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/traslados"));
+    await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/ranking"));
   });
 
   it.each([

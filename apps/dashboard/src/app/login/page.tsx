@@ -65,7 +65,7 @@ function BordeRasgado({ abajo = false }: { abajo?: boolean }) {
 
 // Las dos piezas del panel, con datos de ejemplo: la tirilla de un despacho
 // (guia fotografiada y leida) y la hoja de talonario de un traslado entre
-// puntos (numero de talonario + numero Syscafe, como en /traslados).
+// puntos (numero de talonario + numero Syscafe). Es solo una ilustracion.
 
 const RENGLONES_DESPACHO = [
   ["Concentrado 40 kg", "12"],
@@ -221,15 +221,13 @@ function FormularioLogin() {
               traslados <span className="text-oro">al día.</span>
             </p>
             <p className="login-sube [--d:450ms] max-w-md text-base text-cielo-ink">
-              Las guías que fotografían las sedes y los traslados entre puntos, con su número de talonario, en un solo lugar.
+              Las guías que fotografían las sedes, leídas y verificadas, en un solo lugar.
             </p>
           </div>
         </div>
 
         <p className="login-franja [--d:700ms] hidden w-full shrink-0 items-center justify-center gap-5 bg-campo px-6 py-3.5 text-sm font-bold uppercase tracking-wide text-ok-on lg:flex">
           <span>Entregas por guía</span>
-          <span aria-hidden className="h-1 w-8 rounded-full bg-ok-on" />
-          <span>Traslados entre puntos</span>
           <span aria-hidden className="h-1 w-8 rounded-full bg-ok-on" />
           <span>Sin duplicados</span>
         </p>

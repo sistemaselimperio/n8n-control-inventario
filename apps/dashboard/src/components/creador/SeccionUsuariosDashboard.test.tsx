@@ -27,7 +27,7 @@ const usuarios = [
     ...base,
     id: "u3",
     usuario: "carla",
-    nombre: "Carla Traslados",
+    nombre: "Carla Legado",
     rol: "supervisor",
     area: "traslados",
     bloqueado_hasta: "2999-01-01T00:00:00Z",
@@ -60,7 +60,9 @@ describe("SeccionUsuariosDashboard: listado", () => {
     expect(within(fila("Beto Consulta")).getByText(/Consulta, área bodega/)).toBeInTheDocument();
     expect(within(fila("Beto Consulta")).queryByText(/nunca/)).toBeNull();
     expect(within(fila("Ana Admin")).getByText(/Último ingreso: nunca/)).toBeInTheDocument();
-    expect(within(fila("Carla Traslados")).getByText(/Bloqueado hasta/)).toBeInTheDocument();
+    expect(within(fila("Carla Legado")).getByText(/Bloqueado hasta/)).toBeInTheDocument();
+    // El area retirada "traslados" que aun devuelve el backend se muestra como bodega.
+    expect(within(fila("Carla Legado")).getByText(/Supervisor, área bodega/)).toBeInTheDocument();
     expect(within(fila("Beto Consulta")).queryByText(/Bloqueado hasta/)).toBeNull();
   });
 
@@ -97,14 +99,14 @@ describe("SeccionUsuariosDashboard: crear", () => {
     montar();
     await llenar();
     await userEvent.selectOptions(screen.getByLabelText("Rol"), "supervisor");
-    await userEvent.selectOptions(screen.getByLabelText("Área"), "traslados");
+    await userEvent.selectOptions(screen.getByLabelText("Área"), "bodega");
     await userEvent.click(screen.getByRole("button", { name: "Crear usuario" }));
     await waitFor(() =>
       expect(api.crearUsuarioDashboard).toHaveBeenCalledWith({
         usuario: "nuevousuario",
         nombre: "Nuevo",
         rol: "supervisor",
-        area: "traslados",
+        area: "bodega",
         password: "claveSegura1",
       }),
     );

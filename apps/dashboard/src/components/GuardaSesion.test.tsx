@@ -44,10 +44,10 @@ beforeEach(() => {
 
 describe("guard de rutas", () => {
   it("sin sesion no pinta el contenido y manda a /login con ?siguiente", async () => {
-    nav.pathname = "/traslados";
+    nav.pathname = "/ranking";
     montar();
     expect(screen.queryByText("contenido protegido")).toBeNull();
-    await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/login?siguiente=%2Ftraslados"));
+    await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/login?siguiente=%2Franking"));
   });
 
   it("desde la raiz manda a /login sin siguiente", async () => {
@@ -73,11 +73,19 @@ describe("guard de rutas", () => {
     expect(nav.replace).not.toHaveBeenCalled();
   });
 
-  it("un usuario de area traslados en /entregas es llevado a /traslados sin ver el contenido", async () => {
+  it("un usuario con el area retirada traslados se trata como bodega y entra a /entregas", () => {
+    iniciarSesionDePrueba({ usuario: usuarioDe("consulta", "traslados") });
+    montar();
+    expect(screen.getByText("contenido protegido")).toBeInTheDocument();
+    expect(nav.replace).not.toHaveBeenCalled();
+  });
+
+  it("un usuario con el area retirada traslados en una ruta que ya no existe es llevado a /entregas", async () => {
+    nav.pathname = "/traslados";
     iniciarSesionDePrueba({ usuario: usuarioDe("consulta", "traslados") });
     montar();
     expect(screen.queryByText("contenido protegido")).toBeNull();
-    await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/traslados"));
+    await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/entregas"));
   });
 });
 
@@ -86,7 +94,6 @@ describe("barra de usuario", () => {
     iniciarSesionDePrueba();
     montar();
     expect(screen.getByRole("link", { name: "Administración" })).toHaveAttribute("href", "/creador");
-    expect(screen.getByRole("link", { name: "Traslados" })).toHaveAttribute("href", "/traslados");
     expect(screen.getByRole("link", { name: "Entregas" })).toHaveAttribute("aria-current", "page");
   });
 
@@ -95,7 +102,6 @@ describe("barra de usuario", () => {
     montar();
     const esperados: [string, string][] = [
       ["Entregas", "/entregas"],
-      ["Traslados", "/traslados"],
       ["Ranking", "/ranking"],
       ["Turnos", "/turnos"],
       ["Catálogo", "/productos"],
@@ -105,38 +111,39 @@ describe("barra de usuario", () => {
     for (const [nombre, href] of esperados) {
       expect(nav.getByRole("link", { name: nombre })).toHaveAttribute("href", href);
     }
+    // Traslados ya no existe en el dashboard: no hay pestaña ni texto en la barra.
+    expect(screen.queryByText(/Traslados/)).toBeNull();
     // El grupo "Análisis" ya no existe: nada de botones con popup ni menus.
     expect(screen.queryByRole("button", { name: /Análisis/ })).toBeNull();
     expect(screen.queryByRole("menu", { name: "Análisis" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: /Ranking/ })).toBeNull();
   });
 
-  it("un supervisor de bodega ve bloqueados (sin enlace) Traslados, Turnos y Administracion", () => {
+  it("un supervisor de bodega ve bloqueados (sin enlace) Turnos y Administracion", () => {
     iniciarSesionDePrueba({ usuario: usuarioDe("supervisor", "bodega") });
     montar();
-    for (const nombre of ["Administración", "Traslados", "Turnos"]) {
+    for (const nombre of ["Administración", "Turnos"]) {
       expect(screen.queryByRole("link", { name: nombre })).toBeNull();
     }
-    expect(screen.getAllByText(", sin acceso")).toHaveLength(3);
+    expect(screen.getAllByText(", sin acceso")).toHaveLength(2);
     // Lo que si puede abrir sigue siendo un enlace.
     expect(screen.getByRole("link", { name: "Ranking" })).toHaveAttribute("href", "/ranking");
     expect(screen.getByRole("link", { name: "Catálogo" })).toHaveAttribute("href", "/productos");
   });
 
-  it("un usuario de area traslados puede abrir Traslados pero no Ranking", () => {
-    nav.pathname = "/traslados";
+  it("un usuario con el area retirada traslados ve la barra de bodega", () => {
     iniciarSesionDePrueba({ usuario: usuarioDe("consulta", "traslados") });
     montar();
-    expect(screen.getByRole("link", { name: "Traslados" })).toHaveAttribute("href", "/traslados");
+    expect(screen.queryByRole("link", { name: /Traslados/ })).toBeNull();
     expect(screen.queryByRole("link", { name: "Puntos" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "Ranking" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Ranking" })).toHaveAttribute("href", "/ranking");
   });
 
   it("las pestañas quedan siempre a la vista, sin boton de menu plegable", () => {
     iniciarSesionDePrueba();
     montar();
     expect(screen.queryByRole("button", { name: "Menú de navegación" })).toBeNull();
-    expect(within(screen.getByRole("navigation", { name: "Principal" })).getAllByRole("listitem")).toHaveLength(6);
+    expect(within(screen.getByRole("navigation", { name: "Principal" })).getAllByRole("listitem")).toHaveLength(5);
   });
 
   it("muestra nombre, usuario y rol en el menu de usuario", async () => {

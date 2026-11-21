@@ -7,7 +7,11 @@
 export type RolDashboard = "admin" | "supervisor" | "consulta";
 
 // Area: que secciones ve el usuario (el rol define que puede hacer en ellas).
-export type AreaDashboard = "todo" | "bodega" | "traslados";
+export type AreaDashboard = "todo" | "bodega";
+
+// El backend todavia puede devolver el area retirada "traslados" (usuarios
+// creados antes de quitar esa seccion); se normaliza a "bodega" al leerla.
+export type AreaCruda = AreaDashboard | "traslados";
 
 export interface UsuarioDashboard {
   id: string;
@@ -16,7 +20,7 @@ export interface UsuarioDashboard {
   rol: RolDashboard;
   // Opcional: las sesiones guardadas antes de existir las areas no la traen
   // y cuentan como "todo".
-  area?: AreaDashboard;
+  area?: AreaCruda;
 }
 
 export interface Sesion {
@@ -141,13 +145,17 @@ export const ETIQUETA_ROL: Record<RolDashboard, string> = {
 export const ETIQUETA_AREA: Record<AreaDashboard, string> = {
   todo: "Todo",
   bodega: "Bodega",
-  traslados: "Traslados",
 };
 
+// Convierte el area cruda del backend/sesion en un area vigente: "traslados"
+// (retirada) pasa a "bodega" y la ausencia cuenta como "todo".
+export const normalizarArea = (area: AreaCruda | null | undefined): AreaDashboard =>
+  area === "traslados" ? "bodega" : (area ?? "todo");
+
 // Area con la que actua el usuario: el admin siempre es "todo", y una sesion
-// vieja sin area tambien.
+// vieja sin area tambien. El area retirada "traslados" cuenta como "bodega".
 export const areaEfectiva = (u: UsuarioDashboard | null | undefined): AreaDashboard =>
-  !u || u.rol === "admin" ? "todo" : (u.area ?? "todo");
+  !u || u.rol === "admin" ? "todo" : normalizarArea(u.area);
 
 // Paginas que ve cada area (las exclusivas de admin se filtran aparte). "/" ya
 // no es una pagina: redirige a /entregas, por eso sigue permitida en bodega
@@ -155,7 +163,6 @@ export const areaEfectiva = (u: UsuarioDashboard | null | undefined): AreaDashbo
 const RUTAS_POR_AREA: Record<AreaDashboard, string[] | "todas"> = {
   todo: "todas",
   bodega: ["/entregas", "/", "/productos", "/ranking"],
-  traslados: ["/traslados"],
 };
 
 const coincideRuta = (ruta: string, base: string) =>

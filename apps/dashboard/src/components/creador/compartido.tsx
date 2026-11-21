@@ -36,7 +36,7 @@ export const etiquetaRol = (rol: string) => ROLES.find((r) => r.valor === rol)?.
 export const PIN_VALIDO = /^\d{4,6}$/;
 
 export const ROLES_DASHBOARD: RolDashboard[] = ["admin", "supervisor", "consulta"];
-export const AREAS_DASHBOARD: AreaDashboard[] = ["todo", "bodega", "traslados"];
+export const AREAS_DASHBOARD: AreaDashboard[] = ["todo", "bodega"];
 export const PASSWORD_MIN = 8;
 
 export function Campo({ etiqueta, children, className = "" }: { etiqueta: string; children: ReactNode; className?: string }) {

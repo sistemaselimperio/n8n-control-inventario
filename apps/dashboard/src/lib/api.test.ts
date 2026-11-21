@@ -112,11 +112,6 @@ describe("lecturas (getJson)", () => {
     ["fetchEmpleados", () => api.fetchEmpleados("s&1"), "/empleados?sede_id=s%261"],
     ["fetchProductos sin busqueda", () => api.fetchProductos(), "/productos"],
     ["fetchProductos con busqueda", () => api.fetchProductos("arroz 1kg"), "/productos?buscar=arroz%201kg"],
-    ["fetchTrasladoDetalle", () => api.fetchTrasladoDetalle("t1"), "/traslados-puntos/t1"],
-    ["fetchActividadTraslados", () => api.fetchActividadTraslados(), "/traslados-puntos/actividad?limite=50"],
-    ["fetchActividadTraslados con limite", () => api.fetchActividadTraslados(10), "/traslados-puntos/actividad?limite=10"],
-    ["fetchResumenTalonarios", () => api.fetchResumenTalonarios(), "/talonarios-puntos/resumen"],
-    ["fetchPuntosPublicos", () => api.fetchPuntosPublicos(), "/puntos"],
     ["fetchCargaTurnos", () => api.fetchCargaTurnos("s1", 4), "/turnos/carga?sede_id=s1&semanas=4"],
     ["fetchYo", () => api.fetchYo(), "/dashboard/auth/yo"],
   ];
@@ -126,65 +121,6 @@ describe("lecturas (getJson)", () => {
     const { url, init } = ultimaLlamada(fetchMock);
     expect(url).toBe(`${BASE}${ruta}`);
     expect(init.method).toBeUndefined();
-  });
-
-  it("listarTrasladosSyscafe sin filtros no agrega query", async () => {
-    const fetchMock = mockFetch(respuestaJson([]));
-    await api.listarTrasladosSyscafe();
-    expect(ultimaLlamada(fetchMock).url).toBe(`${BASE}/traslados-puntos/syscafe`);
-  });
-
-  it("listarTrasladosSyscafe mapea los filtros", async () => {
-    const fetchMock = mockFetch(respuestaJson([]));
-    await api.listarTrasladosSyscafe({ puntoId: "p1", pendientes: true, desde: "2026-10-01", hasta: "2026-10-31" });
-    const url = new URL(ultimaLlamada(fetchMock).url);
-    expect(Object.fromEntries(url.searchParams)).toEqual({
-      punto_id: "p1",
-      pendientes: "true",
-      desde: "2026-10-01",
-      hasta: "2026-10-31",
-    });
-  });
-
-  it("fetchTalonarioPunto pide GET /puntos/{id}/talonario", async () => {
-    const fetchMock = mockFetch(respuestaJson({ talonarios: [], talonario: null }));
-    const r = await api.fetchTalonarioPunto("p 1");
-    expect(ultimaLlamada(fetchMock).url).toBe(`${BASE}/puntos/p%201/talonario`);
-    expect(r.talonarios).toEqual([]);
-  });
-
-  it("listarTrasladosRecibidos pide los del destino y los normaliza a fila de Syscafe", async () => {
-    const fetchMock = mockFetch(
-      respuestaJson([
-        {
-          id: "t9",
-          consecutivo: 9,
-          tipo: "directo",
-          numero_talonario: "A 9",
-          talonario_id: "k1",
-          numero_syscafe: "NBR-9",
-          punto_origen_id: null,
-          punto_origen_nombre: null,
-          punto_destino_id: "p2",
-          punto_destino_nombre: "Norte",
-          estado: "recibido",
-          fecha: "2026-10-13",
-          created_at: "2026-10-13T10:00:00Z",
-        },
-      ]),
-    );
-    const filas = await api.listarTrasladosRecibidos("p2");
-    expect(ultimaLlamada(fetchMock).url).toBe(`${BASE}/traslados-puntos?destino_id=p2`);
-    expect(filas).toEqual([
-      expect.objectContaining({
-        tipo: "traslado",
-        id: "t9",
-        tipo_traslado: "directo",
-        numero_syscafe: "NBR-9",
-        motivo: null,
-        anulado_por_nombre: null,
-      }),
-    ]);
   });
 
   it("fetchRankingProductos arma la query y omite lo opcional", async () => {
@@ -390,7 +326,7 @@ describe("descargarExport", () => {
   });
 });
 
-describe("productos y traslados", () => {
+describe("productos", () => {
   it("crearProducto hace POST con el cuerpo", async () => {
     const fetchMock = mockFetch(respuestaJson({ id: "p1" }));
     await api.crearProducto({ codigo: "A1", nombre: "Arroz" });
@@ -415,140 +351,6 @@ describe("productos y traslados", () => {
   it("actualizarProducto lanza con el respaldo", async () => {
     mockFetch(new Response("", { status: 500 }));
     await expect(api.actualizarProducto("p1", {})).rejects.toThrow("No se pudo actualizar el producto (500)");
-  });
-
-  it("asignarSyscafeDashboard guarda y borra con null", async () => {
-    const fetchMock = mockFetch(new Response(null, { status: 204 }));
-    await api.asignarSyscafeDashboard("t1", "TB9-120");
-    expect(ultimaLlamada(fetchMock).url).toBe(`${BASE}/traslados-puntos/t1/syscafe/dashboard`);
-    expect(JSON.parse(ultimaLlamada(fetchMock).init.body as string)).toEqual({ numero_syscafe: "TB9-120" });
-    await api.asignarSyscafeDashboard("t1", null);
-    expect(JSON.parse(ultimaLlamada(fetchMock).init.body as string)).toEqual({ numero_syscafe: null });
-  });
-
-  it("asignarSyscafeDashboard muestra el 409 que nombra la otra hoja", async () => {
-    mockFetch(respuestaJson({ detail: "Ya lo tiene la hoja A 12" }, 409));
-    await expect(api.asignarSyscafeDashboard("t1", "NBR-1")).rejects.toThrow("Ya lo tiene la hoja A 12");
-  });
-
-  it("resolverNovedadDashboard envia la solucion y el consecutivo", async () => {
-    const fetchMock = mockFetch(respuestaJson({ id: "t1", novedad_estado: "resuelta" }));
-    const res = await api.resolverNovedadDashboard("t1", {
-      solucion: "Se repuso",
-      consecutivo_codigo: "NPT",
-      consecutivo_numero: "0012",
-    });
-    const { url, init } = ultimaLlamada(fetchMock);
-    expect(url).toBe(`${BASE}/traslados-puntos/t1/solucion/dashboard`);
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({
-      solucion: "Se repuso",
-      consecutivo_codigo: "NPT",
-      consecutivo_numero: "0012",
-    });
-    expect(res.novedad_estado).toBe("resuelta");
-  });
-
-  it("resolverNovedadDashboard muestra el 409 del backend", async () => {
-    mockFetch(respuestaJson({ detail: "Ese consecutivo ya está registrado" }, 409));
-    await expect(
-      api.resolverNovedadDashboard("t1", { solucion: "x", consecutivo_codigo: "NPT", consecutivo_numero: "1" }),
-    ).rejects.toThrow("Ese consecutivo ya está registrado");
-  });
-
-  it("subirReporteSyscafeDashboard envia multipart con el archivo, sin Content-Type manual", async () => {
-    const fetchMock = mockFetch(respuestaJson({ id: "t1", reporte_syscafe_url: "https://x/r.pdf" }));
-    const archivo = new File(["%PDF-1.4"], "reporte.pdf", { type: "application/pdf" });
-    const res = await api.subirReporteSyscafeDashboard("t1", archivo);
-    const { url, init, headers } = ultimaLlamada(fetchMock);
-    expect(url).toBe(`${BASE}/traslados-puntos/t1/reporte-syscafe/dashboard`);
-    expect(init.method).toBe("POST");
-    expect(init.body).toBeInstanceOf(FormData);
-    expect((init.body as FormData).get("archivo")).toBeInstanceOf(File);
-    expect(headers.has("Content-Type")).toBe(false);
-    expect(res.reporte_syscafe_url).toBe("https://x/r.pdf");
-  });
-
-  it("subirReporteSyscafeDashboard muestra el 409 del backend", async () => {
-    mockFetch(respuestaJson({ detail: "Este traslado ya tiene un reporte Syscafe" }, 409));
-    const archivo = new File(["x"], "r.pdf", { type: "application/pdf" });
-    await expect(api.subirReporteSyscafeDashboard("t1", archivo)).rejects.toThrow("ya tiene un reporte Syscafe");
-  });
-});
-
-describe("traslado desde bodega", () => {
-  const pdf = () => new File(["%PDF-1.4"], "NPT 1839.pdf", { type: "application/pdf" });
-  const datos: api.TrasladoBodegaDatos = {
-    numero: "NPT-1839",
-    fecha: "2026-11-02",
-    concepto: "SUGERIDO",
-    origen: "BODEGA VENTAS",
-    punto_destino_id: "p2",
-    elaboro: "YOHANA",
-    items: [{ referencia: "02058", detalle: "C. CONTELAC", empaque: "BULTO", cantidad: 15, precio: 75700 }],
-  };
-
-  it("leerBorradorTrasladoBodega envia multipart con el PDF y devuelve el borrador", async () => {
-    const fetchMock = mockFetch(respuestaJson({ numero: "NPT-1839", items: [], advertencias: [] }));
-    const res = await api.leerBorradorTrasladoBodega(pdf());
-    const { url, init, headers } = ultimaLlamada(fetchMock);
-    expect(url).toBe(`${BASE}/traslados-puntos/desde-bodega/borrador`);
-    expect(init.method).toBe("POST");
-    expect((init.body as FormData).get("archivo")).toBeInstanceOf(File);
-    expect(headers.has("Content-Type")).toBe(false);
-    expect(res.numero).toBe("NPT-1839");
-  });
-
-  it("leerBorradorTrasladoBodega muestra el 422 del backend", async () => {
-    mockFetch(respuestaJson({ detail: "El PDF no tiene texto legible" }, 422));
-    await expect(api.leerBorradorTrasladoBodega(pdf())).rejects.toThrow("El PDF no tiene texto legible");
-  });
-
-  it("enviarTrasladoBodega manda el PDF y los datos revisados como JSON en el campo `datos`", async () => {
-    const fetchMock = mockFetch(respuestaJson({ id: "t1", estado: "en_transito" }, 201));
-    const res = await api.enviarTrasladoBodega(pdf(), datos);
-    const { url, init, headers } = ultimaLlamada(fetchMock);
-    expect(url).toBe(`${BASE}/traslados-puntos/desde-bodega`);
-    expect(init.method).toBe("POST");
-    const cuerpo = init.body as FormData;
-    expect(cuerpo.get("archivo")).toBeInstanceOf(File);
-    expect(JSON.parse(cuerpo.get("datos") as string)).toEqual(datos);
-    expect(headers.has("Content-Type")).toBe(false);
-    expect(res.id).toBe("t1");
-  });
-
-  it("enviarTrasladoBodega muestra el 409 de un traslado ya cargado", async () => {
-    mockFetch(respuestaJson({ detail: "El traslado NPT-1839 ya fue cargado" }, 409));
-    await expect(api.enviarTrasladoBodega(pdf(), datos)).rejects.toThrow("NPT-1839 ya fue cargado");
-  });
-
-  it("editarTrasladoBodega hace PATCH con los datos", async () => {
-    const fetchMock = mockFetch(respuestaJson({ id: "t1" }));
-    await api.editarTrasladoBodega("t1", datos);
-    const { url, init } = ultimaLlamada(fetchMock);
-    expect(url).toBe(`${BASE}/traslados-puntos/t1/desde-bodega`);
-    expect(init.method).toBe("PATCH");
-    expect(JSON.parse(init.body as string)).toEqual(datos);
-  });
-
-  it("editarTrasladoBodega muestra el 409 de un traslado ya recibido", async () => {
-    mockFetch(respuestaJson({ detail: "Este traslado ya fue recibido y no se puede modificar" }, 409));
-    await expect(api.editarTrasladoBodega("t1", datos)).rejects.toThrow("ya fue recibido");
-  });
-
-  it("anularTrasladoBodega manda el motivo", async () => {
-    const fetchMock = mockFetch(respuestaJson({ id: "t1", estado: "anulado" }));
-    const res = await api.anularTrasladoBodega("t1", "Cantidades mal");
-    const { url, init } = ultimaLlamada(fetchMock);
-    expect(url).toBe(`${BASE}/traslados-puntos/t1/anular`);
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({ motivo: "Cantidades mal" });
-    expect(res.estado).toBe("anulado");
-  });
-
-  it("anularTrasladoBodega muestra el error del backend", async () => {
-    mockFetch(respuestaJson({ detail: "Este traslado ya está anulado" }, 409));
-    await expect(api.anularTrasladoBodega("t1", "x")).rejects.toThrow("ya está anulado");
   });
 });
 

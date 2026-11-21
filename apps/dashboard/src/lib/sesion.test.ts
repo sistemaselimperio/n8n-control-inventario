@@ -148,7 +148,8 @@ describe("roles, areas y rutas", () => {
   it("areaEfectiva: admin y sesiones viejas sin area cuentan como todo", () => {
     expect(areaEfectiva(usuario("admin", "bodega"))).toBe("todo");
     expect(areaEfectiva(usuario("consulta"))).toBe("todo");
-    expect(areaEfectiva(usuario("consulta", "traslados"))).toBe("traslados");
+    // El area retirada "traslados" que aun puede venir del backend cuenta como bodega.
+    expect(areaEfectiva(usuario("consulta", "traslados"))).toBe("bodega");
     expect(areaEfectiva(null)).toBe("todo");
   });
 
@@ -162,17 +163,17 @@ describe("roles, areas y rutas", () => {
     expect(rutaPermitida(bodega, "/creador")).toBe(false);
     // Un prefijo parcial no cuenta ("/entregasX").
     expect(rutaPermitida(bodega, "/entregasX")).toBe(false);
-    const traslados = usuario("consulta", "traslados");
-    expect(rutaPermitida(traslados, "/traslados/abc")).toBe(true);
-    // /puntos se retiro del dashboard: ya no es una ruta del area traslados.
-    expect(rutaPermitida(traslados, "/puntos")).toBe(false);
-    expect(rutaPermitida(traslados, "/entregas")).toBe(false);
+    // Area retirada "traslados": se comporta como bodega.
+    const legado = usuario("consulta", "traslados");
+    expect(rutaPermitida(legado, "/traslados/abc")).toBe(false);
+    expect(rutaPermitida(legado, "/puntos")).toBe(false);
+    expect(rutaPermitida(legado, "/entregas")).toBe(true);
     expect(rutaPermitida(usuario("admin"), "/cualquiera")).toBe(true);
   });
 
   it("rutaInicial por area", () => {
     expect(rutaInicial(usuario("admin"))).toBe("/entregas");
     expect(rutaInicial(usuario("consulta", "bodega"))).toBe("/entregas");
-    expect(rutaInicial(usuario("consulta", "traslados"))).toBe("/traslados");
+    expect(rutaInicial(usuario("consulta", "traslados"))).toBe("/entregas");
   });
 });
