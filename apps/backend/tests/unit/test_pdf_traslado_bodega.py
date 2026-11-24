@@ -260,3 +260,39 @@ def test_formato_sin_precio_con_costo_pegado():
     ]
     assert datos["elaboro"] == "ERIKA"
     assert datos["advertencias"] == []
+
+
+# Variante de los puntos TB (Susa, Saboya...): el numero sale sin guion,
+# solo con espacio entre el codigo y el numero ("TB4 7278").
+_TEXTO_NUMERO_SIN_GUION = """                                                      TRASLADO ENTRE BODEGAS
+                                                      SUSA NEW No:
+
+ Nit: 74439231-1                                       _7M5116PS4                          TB4 7278
+  Concepto          INGRESO DE MCIA DE FINCA/ PEDRO MUNEVAR          Pág:         1                  Nov-23-2026
+  VERIFICAR MERCANCIA Y CANTIDADES, SE CARGARA AL INVENTARIO COMO INDICA EL TRASLADO.
+
+    Referencia                                           Detalle                       Emb.        Cant          Precio
+02109                    71,000C. CONTELAC 14  P. BULTO                                30.00
+02058                    77,000C. CONTELAC 18 P. BULTO                                 42.00
+
+  Bodega:      01      BODEGA VENTAS                     Peso              Totales     72.00        0.00     1,234.00
+  Destino:     07      BODEGA SUSA
+"""
+
+
+def test_numero_sin_guion_solo_con_espacio():
+    datos = pdf.parsear_traslado_bodega(_TEXTO_NUMERO_SIN_GUION)
+    assert datos["numero"] == "TB4-7278"
+    assert datos["fecha"] == "2026-11-23"
+    assert datos["destino_texto"] == "BODEGA SUSA"
+
+
+def test_numero_con_guion_tiene_prioridad_sobre_uno_sin_guion():
+    texto = _TEXTO_NUMERO_SIN_GUION.replace("_7M5116PS4", "TB9 1111").replace("TB4 7278", "CPG - 1355")
+    assert pdf.parsear_traslado_bodega(texto)["numero"] == "CPG-1355"
+
+
+def test_numero_sin_guion_solo_vale_al_final_de_la_linea():
+    texto = _TEXTO_NUMERO_SIN_GUION.replace("TB4 7278", "").replace("FINCA/ PEDRO", "LOTE 15 PEDRO")
+    with pytest.raises(pdf.PdfTrasladoInvalido):
+        pdf.parsear_traslado_bodega(texto)

@@ -83,6 +83,10 @@ _INICIO_PIE = re.compile(r"^\s*Bodega:")
 # El numero sale con espacios intercalados en el PDF ("N PT - 1839").
 # El prefijo puede llevar digitos ("TS3 - 1023").
 _NUMERO = re.compile(r"\b([A-Z](?:\s?[A-Z0-9]){1,3})\s*-\s*(\d{1,7})(?![\d-])")
+# En los traslados de los puntos TB el numero sale sin guion ("TB4 7278"). Es
+# un patron mas laxo: solo se usa si ninguna linea trae el formato con guion y
+# solo al final de la linea, para no tomar textos como "LOTE 15" del concepto.
+_NUMERO_SIN_GUION = re.compile(r"\b([A-Z][A-Z0-9]{1,3})\s+(\d{1,7})\s*$")
 _FECHA = re.compile(r"\b([A-Za-z]{3})-(\d{2})-(\d{4})\b")
 # El precio es opcional: hay variantes que terminan en la cantidad.
 _ITEM = re.compile(r"^\s*([0-9A-Za-z\-]+)\s+(.+?)\s+(\d+\.\d{1,2})(?:\s+([\d,]*\d\.\d{1,2}))?\s*$")
@@ -137,6 +141,20 @@ def _separar_empaque(descripcion: str) -> tuple[str, str]:
     return " ".join(palabras[:-1]), palabras[-1]
 
 
+def _leer_numero(encabezado: list[str], patron: re.Pattern) -> str | None:
+    """Numero normalizado de la primera linea del encabezado que coincide con
+    `patron`, o None si ninguna coincide o no es un numero valido."""
+    for linea in encabezado:
+        coincidencia = patron.search(linea)
+        if coincidencia:
+            prefijo = re.sub(r"\s+", "", coincidencia.group(1))
+            try:
+                return normalizar_numero_syscafe(f"{prefijo}-{coincidencia.group(2)}")
+            except ValueError:
+                return None
+    return None
+
+
 def parsear_traslado_bodega(texto: str) -> dict:
     """Borrador del traslado a partir del texto del PDF: `numero` ("NPT-1839"),
     `fecha` (ISO), `concepto`, `origen`, `destino_texto`, `elaboro`,
@@ -154,16 +172,7 @@ def parsear_traslado_bodega(texto: str) -> dict:
 
     advertencias: list[str] = []
 
-    numero = None
-    for linea in encabezado:
-        coincidencia = _NUMERO.search(linea)
-        if coincidencia:
-            prefijo = re.sub(r"\s+", "", coincidencia.group(1))
-            try:
-                numero = normalizar_numero_syscafe(f"{prefijo}-{coincidencia.group(2)}")
-            except ValueError:
-                numero = None
-            break
+    numero = _leer_numero(encabezado, _NUMERO) or _leer_numero(encabezado, _NUMERO_SIN_GUION)
     if numero is None:
         raise PdfTrasladoInvalido("No se encontró el número del traslado (ej. NPT-1839) en el PDF")
 
