@@ -273,15 +273,16 @@ async def test_flujo_confirmar_devolver_y_reenviar(pg, cliente):
     assert [c["tipo"] for c in detalle["comprobantes"]] == ["ingreso"] and "historial" not in detalle
 
 
-async def test_un_usuario_de_punto_sin_cedula_no_puede_firmar(pg, cliente):
+async def test_un_usuario_de_punto_sin_cedula_puede_firmar(pg, cliente):
     ids, _, _, _ = await _traslado_creado(pg)
     destino = await pg.fetchval("select id from puntos where codigo = 'PDT'")
     _, h_sin, _ = await _usuario(pg, "sincedula", punto_id=str(destino))
     res = await cliente.post(
         f"/traslados/comprobantes/{ids['ingreso']}/confirmar", headers=h_sin, files={"firma": ("f.png", PNG, "image/png")}
     )
-    assert res.status_code == 422 and "cédula" in res.json()["detail"]
-    assert await pg.fetchval("select estado from traslado_comprobantes where tipo = 'ingreso'") == "pendiente"
+    assert res.status_code == 200
+    fila = await pg.fetchrow("select estado, responsable_cedula from traslado_comprobantes where tipo = 'ingreso'")
+    assert fila["estado"] == "confirmado" and fila["responsable_cedula"] is None
 
 
 async def test_reenviar_a_un_numero_que_ya_existe_es_409(pg, cliente):

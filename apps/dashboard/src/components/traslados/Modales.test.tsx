@@ -94,11 +94,13 @@ describe("ModalConfirmarComprobante", () => {
     expect(screen.getByText(/C\.C\. 1002003004/)).toBeInTheDocument();
   });
 
-  it("sin cedula avisa que se pida al administrador y no deja confirmar", () => {
-    montar({ nombre: "Laura Perez", cedula: "" });
-    expect(screen.getByRole("alert")).toHaveTextContent(/administrador/);
-    expect(screen.queryByLabelText("Área de firma")).toBeNull();
-    expect(screen.getByRole("button", { name: "Confirmar recepción" })).toBeDisabled();
+  it("sin cedula igual deja firmar y confirmar: basta con la sesion del punto", async () => {
+    montar({ nombre: "Punto Susa", cedula: "" });
+    expect(screen.queryByText(/C\.C\./)).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByLabelText("Área de firma")).toBeInTheDocument();
+    firmar();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Confirmar recepción" })).toBeEnabled());
   });
 
   it("el boton queda deshabilitado hasta que haya un trazo", async () => {

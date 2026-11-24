@@ -494,13 +494,21 @@ async def test_confirmar_sin_firma_o_con_firma_invalida_es_422_sin_subir(pool, c
     assert storage.subidas == [] and conn.sql_ejecutado("update traslado_comprobantes set") == []
 
 
-async def test_confirmar_exige_cedula_configurada(pool, conn, storage):
+async def test_el_punto_confirma_aunque_su_usuario_no_tenga_cedula(pool, conn, storage):
+    # Basta con la sesion del punto y la firma: la cedula es opcional y queda null.
     _guion_comprobante(conn)
     sin_cedula = perfil_de(usuario(punto_id=PDT, cedula=None))
-    with pytest.raises(r.DatoInvalido) as info:
-        await svc.confirmar(sin_cedula, COMP_SALIDA, PNG, None)
-    assert "cédula" in str(info.value)
-    assert storage.subidas == []
+    await svc.confirmar(sin_cedula, COMP_SALIDA, PNG, None)
+    (_, _, args) = conn.sql_ejecutado("update traslado_comprobantes set")[0]
+    assert args[3] is None
+    assert len(storage.subidas) == 1
+
+
+async def test_el_punto_devuelve_un_pendiente_aunque_no_tenga_cedula(pool, conn, storage):
+    _guion_comprobante(conn)
+    sin_cedula = perfil_de(usuario(punto_id=PDT, cedula=None))
+    await svc.devolver(sin_cedula, COMP_SALIDA, "No llegó")
+    assert len(conn.sql_ejecutado("update traslado_comprobantes set")) == 1
 
 
 async def test_confirmar_de_otro_punto_es_404_y_de_la_encargada_es_403(pool, conn, storage):
@@ -556,10 +564,8 @@ async def test_el_punto_devuelve_un_pendiente_con_motivo(pool, conn, storage):
     assert storage.subidas == [] and storage.borradas == []
 
 
-async def test_devolver_un_pendiente_exige_cedula_y_motivo(pool, conn, storage):
+async def test_devolver_un_pendiente_exige_motivo(pool, conn, storage):
     _guion_comprobante(conn)
-    with pytest.raises(r.DatoInvalido):
-        await svc.devolver(perfil_de(usuario(punto_id=PDT, cedula=None)), COMP_SALIDA, "motivo")
     for motivo in ("", "   ", None, "x" * 501):
         with pytest.raises(r.DatoInvalido):
             await svc.devolver(PUNTO_PDT, COMP_SALIDA, motivo)

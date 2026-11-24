@@ -158,13 +158,6 @@ def _limpiar_texto(valor: str | None, maximo: int, campo: str) -> str | None:
     return valor
 
 
-def _exigir_cedula(perfil: PerfilTraslados) -> None:
-    if not perfil.usuario.get("cedula"):
-        raise DatoInvalido(
-            "Tu usuario no tiene la cédula configurada. Pide al administrador que la registre antes de firmar"
-        )
-
-
 def _validar_pdf(contenido: bytes) -> None:
     if not contenido:
         raise DatoInvalido("El archivo está vacío")
@@ -872,7 +865,6 @@ async def confirmar(perfil: PerfilTraslados, comprobante_id: str, firma: bytes, 
     pool = await get_pool()
     fila = await _comprobante_visible(pool, comprobante_id, perfil)
     autorizar_accion(perfil, "confirmar", fila)
-    _exigir_cedula(perfil)
     imagen = detectar_imagen(firma) if firma else None
     if imagen is None:
         raise DatoInvalido("La firma es obligatoria y debe ser una imagen PNG, JPG o WebP")
@@ -899,7 +891,7 @@ async def confirmar(perfil: PerfilTraslados, comprobante_id: str, firma: bytes, 
             comprobante_id,
             perfil.usuario["id"],
             perfil.usuario["nombre"],
-            perfil.usuario["cedula"],
+            perfil.usuario.get("cedula"),
             ruta,
             observacion,
         )
@@ -912,7 +904,7 @@ async def confirmar(perfil: PerfilTraslados, comprobante_id: str, firma: bytes, 
     await _evento(
         EventoLog.TRASLADO_COMPROBANTE_CONFIRMADO, "traslado_comprobante", comprobante_id, perfil, "ok",
         {"numero": fila["numero"], "tipo": fila["tipo"], "firma_ruta": ruta, "observacion": observacion,
-         "responsable_cedula": perfil.usuario["cedula"]},
+         "responsable_cedula": perfil.usuario.get("cedula")},
         sede_id=str(fila["punto_id"]),
     )
     return await detalle_comprobante(perfil, comprobante_id)
@@ -928,8 +920,6 @@ async def devolver(perfil: PerfilTraslados, comprobante_id: str, motivo: str | N
     motivo = _limpiar_texto(motivo, MAX_MOTIVO, "El motivo")
     if motivo is None:
         raise DatoInvalido("El motivo de la devolución es obligatorio")
-    if fila["estado"] == "pendiente":
-        _exigir_cedula(perfil)  # quien resuelve como punto firma con su cedula
     actualizado = await pool.fetchrow(
         """
         update traslado_comprobantes set
