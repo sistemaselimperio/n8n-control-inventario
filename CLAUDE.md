@@ -169,8 +169,12 @@ The whole system exists to move one flow reliably (Figure 1 in `docs/architectur
 
 ## Production
 
-Backend and n8n run on a VPS (Dokploy); the dashboard runs on Vercel. The backend's Dokploy service has
-`autoDeploy: true` — a push to `main` deploys automatically, unlike the old EasyPanel setup.
+Backend, n8n and the dashboard all run on a VPS (Dokploy, project *Despachos*); the dashboard left Vercel in
+2026-11 and is served at `https://despachos.169-58-200-185.sslip.io`, built from `apps/dashboard/Dockerfile`
+(Next.js standalone, only when `NEXT_OUTPUT=standalone`; the `NEXT_PUBLIC_*` values are Dokploy build args).
+Both Dokploy services have `autoDeploy: true` with watch paths (`apps/backend/**`, `apps/dashboard/**`) — a push
+to `main` deploys automatically, unlike the old EasyPanel setup. The backend's `DASHBOARD_ORIGIN` must list the
+dashboard domain or every request fails CORS.
 
 Cada PR que toque `apps/backend` y valga la pena poder verificar sin entrar al panel debe bumpear
 `_BUILD_MARCADOR` en `app/main.py` (ver `GET /health`) -- es la única forma de confirmar desde afuera que
