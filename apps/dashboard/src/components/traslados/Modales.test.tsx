@@ -293,6 +293,37 @@ describe("ModalHistorial", () => {
     expect(items[1]).toHaveTextContent("Cantidad errada");
   });
 
+  it("muestra eventos reales del backend: nombre largo, actor con prefijo y detalle como objeto", async () => {
+    api.fetchComprobante.mockResolvedValue(
+      comp({
+        historial: [
+          {
+            evento: "traslado_comprobante_creado",
+            actor: "dashboard:yohana",
+            resultado: "ok",
+            detalle: { numero: "TB4-7278", tipo: "ingreso" },
+            timestamp: "2026-11-01T10:00:00Z",
+          },
+          {
+            evento: "traslado_comprobante_devuelto",
+            actor: "dashboard:susa",
+            resultado: "ok",
+            detalle: { numero: "TB4-7278", tipo: "ingreso", motivo: "Faltan 2 bultos", estado_anterior: "pendiente" },
+            timestamp: "2026-11-02T10:00:00Z",
+          },
+        ],
+      }),
+    );
+    montar();
+    const items = await screen.findAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent("Enviado al punto");
+    expect(items[0]).toHaveTextContent("yohana");
+    expect(items[0]).not.toHaveTextContent("dashboard:");
+    expect(items[1]).toHaveTextContent("Devuelto");
+    expect(items[1]).toHaveTextContent("Motivo: Faltan 2 bultos");
+  });
+
   it("sin eventos lo dice, y un error permite reintentar", async () => {
     api.fetchComprobante.mockResolvedValueOnce(comp({ historial: [] }));
     montar();

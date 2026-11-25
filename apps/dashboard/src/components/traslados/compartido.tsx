@@ -47,7 +47,7 @@ export function BotonesComprobante({
 } & ManejadoresComprobante) {
   const a = accionesComprobante(perfil, comprobante);
   return (
-    <>
+    <div className="flex flex-wrap items-center justify-end gap-2 md:justify-start">
       {a.historial ? (
         <button type="button" className={BTN_NEUTRO} onClick={() => m.onHistorial(comprobante)}>
           Historial
@@ -73,6 +73,6 @@ export function BotonesComprobante({
           {etiquetaEliminar}
         </button>
       ) : null}
-    </>
+    </div>
   );
 }

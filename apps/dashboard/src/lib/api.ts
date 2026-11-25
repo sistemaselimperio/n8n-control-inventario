@@ -714,7 +714,9 @@ export interface EventoHistorial {
   evento: string;
   actor: string | null;
   resultado: string | null;
-  detalle: string | null;
+  // El backend lo envia como objeto (columna jsonb de logs, ej. {numero, tipo,
+  // motivo}); se acepta texto por compatibilidad.
+  detalle: Record<string, unknown> | string | null;
   timestamp: string;
 }
 
