@@ -240,6 +240,38 @@ async def test_confirmar_pasa_la_firma_y_la_observacion(cliente, pool, conn, mon
     assert args[1] == COMPROBANTE and args[2] == PNG and args[3] == "Todo completo"
 
 
+async def test_confirmar_pasa_quien_recibe_como_campos_del_formulario(cliente, pool, conn, monkeypatch):
+    llamadas = _doble(monkeypatch, "confirmar", {"id": COMPROBANTE})
+    receptor = str(uuid.uuid4())
+    res = await cliente.post(
+        f"/traslados/comprobantes/{COMPROBANTE}/confirmar",
+        files={"firma": ("firma.png", PNG, "image/png")},
+        data={"receptor_id": receptor},
+        headers=_sesion(conn, punto_id=PUNTO),
+    )
+    assert res.status_code == 200
+    assert llamadas[0][1] == {"receptor_id": receptor, "receptor_nombre": None, "receptor_cedula": None}
+    res = await cliente.post(
+        f"/traslados/comprobantes/{COMPROBANTE}/confirmar",
+        files={"firma": ("firma.png", PNG, "image/png")},
+        data={"receptor_nombre": "  Marta Ríos ", "receptor_cedula": " 52.123.456 "},
+        headers=_sesion(conn, punto_id=PUNTO),
+    )
+    assert res.status_code == 200
+    assert llamadas[1][1] == {"receptor_id": None, "receptor_nombre": "Marta Ríos", "receptor_cedula": "52.123.456"}
+
+
+async def test_confirmar_con_receptor_id_invalido_es_422(cliente, pool, conn, monkeypatch):
+    llamadas = _doble(monkeypatch, "confirmar", {"id": COMPROBANTE})
+    res = await cliente.post(
+        f"/traslados/comprobantes/{COMPROBANTE}/confirmar",
+        files={"firma": ("firma.png", PNG, "image/png")},
+        data={"receptor_id": "no-es-uuid"},
+        headers=_sesion(conn, punto_id=PUNTO),
+    )
+    assert res.status_code == 422 and llamadas == []
+
+
 async def test_confirmar_sin_firma_es_422(cliente, pool, conn, monkeypatch):
     llamadas = _doble(monkeypatch, "confirmar", {"id": COMPROBANTE})
     res = await cliente.post(f"/traslados/comprobantes/{COMPROBANTE}/confirmar", headers=_sesion(conn, punto_id=PUNTO))
@@ -266,6 +298,35 @@ async def test_devolver_pasa_el_motivo_limpio(cliente, pool, conn, monkeypatch):
         f"/traslados/comprobantes/{COMPROBANTE}/devolver", json={"motivo": "  Número mal  "}, headers=_sesion(conn, punto_id=PUNTO)
     )
     assert res.status_code == 200 and llamadas[0][0][2] == "Número mal"
+
+
+async def test_devolver_pasa_quien_recibe(cliente, pool, conn, monkeypatch):
+    llamadas = _doble(monkeypatch, "devolver", {"id": COMPROBANTE})
+    receptor = str(uuid.uuid4())
+    res = await cliente.post(
+        f"/traslados/comprobantes/{COMPROBANTE}/devolver",
+        json={"motivo": "Error", "receptor_id": receptor},
+        headers=_sesion(conn, punto_id=PUNTO),
+    )
+    assert res.status_code == 200
+    assert llamadas[0][1] == {"receptor_id": receptor, "receptor_nombre": None, "receptor_cedula": None}
+    res = await cliente.post(
+        f"/traslados/comprobantes/{COMPROBANTE}/devolver",
+        json={"motivo": "Error", "receptor_nombre": "  Marta Ríos ", "receptor_cedula": "52.123.456"},
+        headers=_sesion(conn, punto_id=PUNTO),
+    )
+    assert res.status_code == 200
+    assert llamadas[1][1] == {"receptor_id": None, "receptor_nombre": "Marta Ríos", "receptor_cedula": "52.123.456"}
+
+
+async def test_devolver_con_receptor_id_invalido_es_422(cliente, pool, conn, monkeypatch):
+    llamadas = _doble(monkeypatch, "devolver", {"id": COMPROBANTE})
+    res = await cliente.post(
+        f"/traslados/comprobantes/{COMPROBANTE}/devolver",
+        json={"motivo": "Error", "receptor_id": "x"},
+        headers=_sesion(conn, punto_id=PUNTO),
+    )
+    assert res.status_code == 422 and llamadas == []
 
 
 @pytest.mark.parametrize("cuerpo", [{}, {"motivo": ""}, {"motivo": "   "}, {"motivo": "x" * 501}])

@@ -2,7 +2,7 @@
 // hacer cada perfil, etiquetas y revalidacion de SWR. Sin React.
 
 import { mutate as mutateGlobal } from "swr";
-import type { Comprobante, EstadoComprobante, TipoComprobante } from "./api";
+import type { Comprobante, EstadoComprobante, QuienRecibe, TipoComprobante } from "./api";
 import type { TonoPildora } from "@/components/ui";
 import type { UsuarioDashboard } from "./sesion";
 
@@ -15,6 +15,31 @@ export const revalidarTraslados = () =>
 
 // Cedula de quien firma: solo digitos, 5 a 15 (misma regla del backend).
 export const CEDULA_FIRMA_VALIDA = /^\d{5,15}$/;
+
+// Eleccion de quien recibe en los modales de confirmar / devolver: `receptorId`
+// es "" (nadie), el id de un receptor de la lista u OTRA_PERSONA (nombre y
+// cedula escritos a mano, solo para ese comprobante).
+export const OTRA_PERSONA = "__otra__";
+
+export interface SeleccionReceptor {
+  receptorId: string;
+  nombre: string;
+  cedula: string;
+}
+
+export const SELECCION_VACIA: SeleccionReceptor = { receptorId: "", nombre: "", cedula: "" };
+
+export const normalizarCedula = (valor: string) => valor.replace(/[.\s-]/g, "");
+
+// Lo que se manda al backend, o null mientras la eleccion no sea valida.
+export function quienRecibe(s: SeleccionReceptor): QuienRecibe | null {
+  if (!s.receptorId) return null;
+  if (s.receptorId !== OTRA_PERSONA) return { receptor_id: s.receptorId };
+  const nombre = s.nombre.trim().replace(/\s+/g, " ");
+  const cedula = normalizarCedula(s.cedula);
+  if (!nombre || !CEDULA_FIRMA_VALIDA.test(cedula)) return null;
+  return { receptor_nombre: nombre, receptor_cedula: cedula };
+}
 
 export type TipoPerfil = "admin" | "encargada" | "punto" | "lectura" | "ninguno";
 

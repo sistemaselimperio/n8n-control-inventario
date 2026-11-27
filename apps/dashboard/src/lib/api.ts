@@ -620,6 +620,31 @@ export const resetearPinUsuarioPunto = (id: string, pin: string) =>
 // proteger). Si una entrega futura trae el mismo codigo, se vuelve a crear solo.
 export const eliminarProducto = (id: string) => eliminarAdmin(`/productos/${encodeURIComponent(id)}`);
 
+// Receptores por punto (personas que reciben traslados en cada punto).
+export interface ReceptorAdmin {
+  id: string;
+  punto_id: string;
+  punto_nombre: string;
+  nombre: string;
+  cedula: string;
+  activo: boolean;
+  creado_at: string | null;
+}
+
+export const fetchReceptoresAdmin = (puntoId?: string) => {
+  const params = new URLSearchParams({ incluir_inactivos: "true" });
+  if (puntoId) params.set("punto_id", puntoId);
+  return adminFetch<ReceptorAdmin[]>(`/receptores-punto?${params.toString()}`);
+};
+export const crearReceptor = (datos: { punto_id: string; nombre: string; cedula: string }) =>
+  adminFetch<ReceptorAdmin>("/receptores-punto", { method: "POST", body: datos });
+export const actualizarReceptor = (
+  id: string,
+  cambios: { nombre?: string; cedula?: string; punto_id?: string; activo?: boolean }
+) => adminFetch<ReceptorAdmin>(`/receptores-punto/${encodeURIComponent(id)}`, { method: "PATCH", body: cambios });
+// Borrado definitivo: los comprobantes ya firmados conservan nombre y cedula.
+export const eliminarReceptor = (id: string) => eliminarAdmin(`/receptores-punto/${encodeURIComponent(id)}`);
+
 export const eliminarTipoDocumento = (codigo: string) =>
   eliminarAdmin(`/tipos-documento/${encodeURIComponent(codigo)}`);
 
@@ -732,6 +757,8 @@ export interface Comprobante {
   responsable_usuario_id: string | null;
   responsable_nombre: string | null;
   responsable_cedula: string | null;
+  // Receptor de la lista del punto que firmo; null si fue "otra persona" o ya se borro.
+  receptor_id?: string | null;
   firma_url: string | null;
   observacion: string | null;
   motivo_devolucion: string | null;
@@ -879,20 +906,34 @@ export const eliminarTraslado = (id: string) =>
     method: "DELETE",
   });
 
-export function confirmarComprobante(id: string, firma: Blob, observacion?: string) {
+// Receptor activo de la lista del punto, tal como lo lista el modal.
+export interface ReceptorPunto {
+  id: string;
+  nombre: string;
+  cedula: string;
+}
+
+// Quien recibe: un receptor de la lista O "otra persona" (solo queda en el comprobante).
+export type QuienRecibe = { receptor_id: string } | { receptor_nombre: string; receptor_cedula: string };
+
+export const fetchReceptoresPunto = (puntoId: string) =>
+  trasladosFetch<ReceptorPunto[]>(`/traslados/puntos/${encodeURIComponent(puntoId)}/receptores`);
+
+export function confirmarComprobante(id: string, firma: Blob, observacion?: string, quien?: QuienRecibe) {
   const form = new FormData();
   form.append("firma", firma, "firma.png");
   if (observacion) form.append("observacion", observacion);
+  for (const [campo, valor] of Object.entries(quien ?? {})) form.append(campo, valor);
   return trasladosFetch<Comprobante>(`/traslados/comprobantes/${encodeURIComponent(id)}/confirmar`, {
     method: "POST",
     form,
   });
 }
 
-export const devolverComprobante = (id: string, motivo: string) =>
+export const devolverComprobante = (id: string, motivo: string, quien?: QuienRecibe) =>
   trasladosFetch<Comprobante>(`/traslados/comprobantes/${encodeURIComponent(id)}/devolver`, {
     method: "POST",
-    json: { motivo },
+    json: { motivo, ...quien },
   });
 
 export function reenviarComprobante(id: string, datos: { numero?: string; punto_id?: string; archivo?: File }) {

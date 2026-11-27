@@ -634,3 +634,8 @@ async def test_borrar_producto_inexistente_da_404_sin_evento(cliente, pool, conn
 def test_borrar_usuario_dashboard_revisa_las_novedades_que_resolvio():
     sql = dict(borrado._CHEQUEOS_USUARIO_DASHBOARD)["novedades resueltas"]
     assert "solucionado_por_usuario = $1::uuid" in sql
+
+
+def test_un_punto_con_receptores_de_traslados_no_se_borra():
+    sql = dict(borrado._CHEQUEOS_PUNTO)["receptores de traslados"]
+    assert "from receptores_punto where punto_id = $1::uuid" in sql

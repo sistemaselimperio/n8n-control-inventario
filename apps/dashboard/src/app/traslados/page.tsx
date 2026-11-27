@@ -295,7 +295,6 @@ export default function TrasladosPage() {
       {modal?.tipo === "confirmar" && usuario ? (
         <ModalConfirmarComprobante
           comprobante={modal.comprobante}
-          usuario={{ nombre: usuario.nombre, cedula: usuario.cedula }}
           onCerrar={cerrar}
           onHecho={hecho}
         />

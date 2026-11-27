@@ -204,6 +204,15 @@ async def test_la_misma_carga_en_paralelo_crea_solo_un_traslado(pg):
 # --------------------------- flujo por HTTP ---------------------------
 
 
+async def _receptor(pg, punto_id: str, nombre: str = "Luis Pérez", cedula: str = "7654321", activo: bool = True) -> str:
+    return str(
+        await pg.fetchval(
+            "insert into receptores_punto (punto_id, nombre, cedula, activo) values ($1::uuid, $2, $3, $4) returning id",
+            punto_id, nombre, cedula, activo,
+        )
+    )
+
+
 async def _traslado_creado(pg) -> tuple[dict, dict, dict, dict]:
     origen, destino, _ = await _puntos(pg)
     _, h_enc, enc = await _usuario(pg, "enc")
@@ -226,19 +235,30 @@ async def test_flujo_confirmar_devolver_y_reenviar(pg, cliente):
 
     # El ingreso se confirma sin esperar a la salida.
     ruta = f"/traslados/comprobantes/{ids['ingreso']}"
-    sin_firma = await cliente.post(f"{ruta}/confirmar", headers=h_dest)
+    destino = str(await pg.fetchval("select id from puntos where codigo = 'PDT'"))
+    receptor = await _receptor(pg, destino)
+    sin_firma = await cliente.post(f"{ruta}/confirmar", headers=h_dest, data={"receptor_id": receptor})
     assert sin_firma.status_code == 422
+    sin_receptor = await cliente.post(f"{ruta}/confirmar", headers=h_dest, files={"firma": ("f.png", PNG, "image/png")})
+    assert sin_receptor.status_code == 422 and "quién recibe" in sin_receptor.json()["detail"]
     ok = await cliente.post(
-        f"{ruta}/confirmar", headers=h_dest, files={"firma": ("f.png", PNG, "image/png")}, data={"observacion": "Completo"}
+        f"{ruta}/confirmar", headers=h_dest, files={"firma": ("f.png", PNG, "image/png")},
+        data={"observacion": "Completo", "receptor_id": receptor},
     )
     assert ok.status_code == 200, ok.text
     cuerpo = ok.json()
-    assert cuerpo["estado"] == "confirmado" and cuerpo["responsable_nombre"] == "Nombre pdt"
-    assert cuerpo["responsable_cedula"] == "1234567" and cuerpo["observacion"] == "Completo"
+    # Quien recibe es el receptor elegido; la sesion sigue siendo la del punto.
+    assert cuerpo["estado"] == "confirmado" and cuerpo["responsable_nombre"] == "Luis Pérez"
+    assert cuerpo["responsable_cedula"] == "7654321" and cuerpo["observacion"] == "Completo"
+    assert cuerpo["receptor_id"] == receptor
     assert cuerpo["firma_url"].startswith("https://storage.prueba/traslados-firmas/")
 
     # Ya resuelto: ni confirmar de nuevo ni revertir desde el punto.
-    assert (await cliente.post(f"{ruta}/confirmar", headers=h_dest, files={"firma": ("f.png", PNG, "image/png")})).status_code == 409
+    assert (
+        await cliente.post(
+            f"{ruta}/confirmar", headers=h_dest, files={"firma": ("f.png", PNG, "image/png")}, data={"receptor_id": receptor}
+        )
+    ).status_code == 409
     assert (await cliente.post(f"{ruta}/devolver", headers=h_dest, json={"motivo": "me equivoque"})).status_code == 403
     # El punto de la salida no puede tocar el ingreso.
     assert (await cliente.post(f"{ruta}/devolver", headers=h_orig, json={"motivo": "x"})).status_code == 404
@@ -251,10 +271,17 @@ async def test_flujo_confirmar_devolver_y_reenviar(pg, cliente):
     re = await cliente.post(f"{ruta}/reenviar", headers=h_enc, data={"numero": "NPT-1840"})
     assert re.status_code == 200 and re.json()["estado"] == "pendiente" and re.json()["numero"] == "NPT-1840"
     assert re.json()["responsable_nombre"] is None and re.json()["motivo_devolucion"] is None
+    assert re.json()["receptor_id"] is None
     assert (await cliente.post(f"{ruta}/reenviar", headers=h_enc)).status_code == 409  # ya no esta devuelto
 
     # El punto lo devuelve el mismo (pendiente -> devuelto) y la salida sigue pendiente.
-    assert (await cliente.post(f"{ruta}/devolver", headers=h_dest, json={"motivo": "Cantidad distinta"})).status_code == 200
+    assert (await cliente.post(f"{ruta}/devolver", headers=h_dest, json={"motivo": "Cantidad distinta"})).status_code == 422
+    devuelto = await cliente.post(
+        f"{ruta}/devolver", headers=h_dest,
+        json={"motivo": "Cantidad distinta", "receptor_nombre": "Marta Ríos", "receptor_cedula": "52.123.456"},
+    )
+    assert devuelto.status_code == 200 and devuelto.json()["responsable_cedula"] == "52123456"
+    assert devuelto.json()["receptor_id"] is None
     salida = (await cliente.get(f"/traslados/comprobantes/{ids['salida']}", headers=h_orig)).json()
     assert salida["estado"] == "pendiente"
 
@@ -275,19 +302,25 @@ async def test_flujo_confirmar_devolver_y_reenviar(pg, cliente):
 
 async def test_un_usuario_de_punto_sin_cedula_puede_firmar(pg, cliente):
     ids, _, _, _ = await _traslado_creado(pg)
-    destino = await pg.fetchval("select id from puntos where codigo = 'PDT'")
-    _, h_sin, _ = await _usuario(pg, "sincedula", punto_id=str(destino))
+    destino = str(await pg.fetchval("select id from puntos where codigo = 'PDT'"))
+    receptor = await _receptor(pg, destino)
+    _, h_sin, _ = await _usuario(pg, "sincedula", punto_id=destino)
     res = await cliente.post(
-        f"/traslados/comprobantes/{ids['ingreso']}/confirmar", headers=h_sin, files={"firma": ("f.png", PNG, "image/png")}
+        f"/traslados/comprobantes/{ids['ingreso']}/confirmar", headers=h_sin,
+        files={"firma": ("f.png", PNG, "image/png")}, data={"receptor_id": receptor},
     )
     assert res.status_code == 200
     fila = await pg.fetchrow("select estado, responsable_cedula from traslado_comprobantes where tipo = 'ingreso'")
-    assert fila["estado"] == "confirmado" and fila["responsable_cedula"] is None
+    assert fila["estado"] == "confirmado" and fila["responsable_cedula"] == "7654321"
 
 
 async def test_reenviar_a_un_numero_que_ya_existe_es_409(pg, cliente):
     ids, h_enc, h_dest, _ = await _traslado_creado(pg)
-    await cliente.post(f"/traslados/comprobantes/{ids['ingreso']}/devolver", headers=h_dest, json={"motivo": "x"})
+    destino_id = str(await pg.fetchval("select id from puntos where codigo = 'PDT'"))
+    await cliente.post(
+        f"/traslados/comprobantes/{ids['ingreso']}/devolver", headers=h_dest,
+        json={"motivo": "x", "receptor_id": await _receptor(pg, destino_id)},
+    )
     # Otro traslado con otro numero para el mismo punto de destino.
     destino = await pg.fetchval("select id from puntos where codigo = 'PDT'")
     otro = await pg.fetchval("insert into traslados (numero, creado_por) values ('NPT-9', 'x') returning id")
@@ -304,8 +337,10 @@ async def test_reenviar_a_un_numero_que_ya_existe_es_409(pg, cliente):
 
 async def test_borrado_definitivo_quita_filas_y_archivos_pero_no_los_logs(pg, cliente, _storage):
     ids, h_enc, h_dest, _ = await _traslado_creado(pg)
+    destino_id = str(await pg.fetchval("select id from puntos where codigo = 'PDT'"))
     await cliente.post(
-        f"/traslados/comprobantes/{ids['ingreso']}/confirmar", headers=h_dest, files={"firma": ("f.png", PNG, "image/png")}
+        f"/traslados/comprobantes/{ids['ingreso']}/confirmar", headers=h_dest,
+        files={"firma": ("f.png", PNG, "image/png")}, data={"receptor_id": await _receptor(pg, destino_id)},
     )
     antes = await pg.fetchval("select count(*) from logs")
     assert (await cliente.delete(f"/traslados/{ids['traslado']}", headers=h_dest)).status_code == 403

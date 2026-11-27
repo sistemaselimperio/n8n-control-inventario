@@ -459,8 +459,19 @@ def _comprobante(estado="pendiente", tipo="salida", punto_id=PDT, **extra) -> di
     return fila
 
 
-def _guion_comprobante(conn, fila=None, actualizada=None):
+RECEPTOR = "77777777-7777-7777-7777-777777777777"
+OTRA_PERSONA = {"receptor_nombre": "  Marta   Ríos ", "receptor_cedula": "52.123.456"}
+
+
+def _receptor(punto_id=PDT, **extra) -> dict:
+    fila = {"id": uuid.UUID(RECEPTOR), "punto_id": uuid.UUID(punto_id), "nombre": "Luis Pérez", "cedula": "7654321", "activo": True}
+    fila.update(extra)
+    return fila
+
+
+def _guion_comprobante(conn, fila=None, actualizada=None, receptor=None):
     fila = fila or _comprobante()
+    conn.responder("fetchrow", "from receptores_punto where id", receptor or _receptor())
     conn.responder("fetchrow", "where c.id = $1::uuid", fila)
     conn.responder("fetchrow", "update traslado_comprobantes set", actualizada if actualizada is not None else {**fila, "estado": "x"})
     conn.responder("fetchrow", "from traslados t", _borrador(estado="enviado", numero="NPT-1839"))
@@ -470,16 +481,21 @@ def _guion_comprobante(conn, fila=None, actualizada=None):
 
 async def test_el_punto_confirma_con_firma_y_observacion(pool, conn, storage):
     _guion_comprobante(conn)
-    res = await svc.confirmar(PUNTO_PDT, COMP_SALIDA, PNG, "  todo completo ")
+    res = await svc.confirmar(PUNTO_PDT, COMP_SALIDA, PNG, "  todo completo ", receptor_id=RECEPTOR)
     assert res["id"] == COMP_SALIDA
     (_, sql, args) = conn.sql_ejecutado("update traslado_comprobantes set")[0]
     assert "estado = 'confirmado'" in sql and "estado = 'pendiente'" in sql  # solo si sigue pendiente
-    assert PUNTO_PDT.usuario["id"] in args and "Pedro" in args and "1234567" in args and "todo completo" in args
+    # Responsable = el usuario del punto; nombre y cedula = los del receptor elegido (copiados).
+    assert PUNTO_PDT.usuario["id"] in args and "Luis Pérez" in args and "7654321" in args and "todo completo" in args
+    assert "Pedro" not in args and "1234567" not in args and RECEPTOR in args
     ruta, contenido, tipo = storage.subidas[0]
     assert ruta.startswith(f"traslados-firmas/{COMP_SALIDA}/") and ruta.endswith(".png")
     assert contenido == PNG and tipo == "image/png" and ruta in args
     assert conn.eventos_log() == ["traslado_comprobante_confirmado"]
     assert conn.inserts_log()[0][2] == COMP_SALIDA and conn.inserts_log()[0][3] == "dashboard:pedro"
+    detalle = conn.inserts_log()[0][6]
+    assert detalle["receptor_id"] == RECEPTOR and detalle["receptor_fuera_de_lista"] is False
+    assert detalle["responsable_nombre"] == "Luis Pérez" and detalle["responsable_cedula"] == "7654321"
     # La ruta de la firma queda anotada en el traslado para el borrado definitivo.
     assert any("archivos = archivos ||" in c[1] for c in conn.llamadas)
 
@@ -488,27 +504,85 @@ async def test_confirmar_sin_firma_o_con_firma_invalida_es_422_sin_subir(pool, c
     _guion_comprobante(conn)
     for firma in (b"", b"%PDF-1.4 no es imagen", b"GIF89a....."):
         with pytest.raises(r.DatoInvalido):
-            await svc.confirmar(PUNTO_PDT, COMP_SALIDA, firma, None)
+            await svc.confirmar(PUNTO_PDT, COMP_SALIDA, firma, None, receptor_id=RECEPTOR)
     with pytest.raises(r.DatoInvalido):
-        await svc.confirmar(PUNTO_PDT, COMP_SALIDA, PNG + b"0" * r.MAX_BYTES_FIRMA, None)
+        await svc.confirmar(PUNTO_PDT, COMP_SALIDA, PNG + b"0" * r.MAX_BYTES_FIRMA, None, receptor_id=RECEPTOR)
     assert storage.subidas == [] and conn.sql_ejecutado("update traslado_comprobantes set") == []
 
 
 async def test_el_punto_confirma_aunque_su_usuario_no_tenga_cedula(pool, conn, storage):
-    # Basta con la sesion del punto y la firma: la cedula es opcional y queda null.
+    # La cedula del usuario compartido no importa: queda la del receptor elegido.
     _guion_comprobante(conn)
     sin_cedula = perfil_de(usuario(punto_id=PDT, cedula=None))
-    await svc.confirmar(sin_cedula, COMP_SALIDA, PNG, None)
+    await svc.confirmar(sin_cedula, COMP_SALIDA, PNG, None, receptor_id=RECEPTOR)
     (_, _, args) = conn.sql_ejecutado("update traslado_comprobantes set")[0]
-    assert args[3] is None
+    assert args[3] == "7654321"
     assert len(storage.subidas) == 1
 
 
 async def test_el_punto_devuelve_un_pendiente_aunque_no_tenga_cedula(pool, conn, storage):
     _guion_comprobante(conn)
     sin_cedula = perfil_de(usuario(punto_id=PDT, cedula=None))
-    await svc.devolver(sin_cedula, COMP_SALIDA, "No llegó")
+    await svc.devolver(sin_cedula, COMP_SALIDA, "No llegó", receptor_id=RECEPTOR)
     assert len(conn.sql_ejecutado("update traslado_comprobantes set")) == 1
+
+
+async def test_confirmar_con_otra_persona_la_guarda_solo_en_el_comprobante(pool, conn, storage):
+    _guion_comprobante(conn)
+    await svc.confirmar(PUNTO_PDT, COMP_SALIDA, PNG, None, **OTRA_PERSONA)
+    (_, _, args) = conn.sql_ejecutado("update traslado_comprobantes set")[0]
+    assert "Marta Ríos" in args and "52123456" in args and args[-1] is None  # receptor_id null
+    assert conn.sql_ejecutado("insert into receptores_punto") == []  # nunca se agrega a la lista
+    detalle = conn.inserts_log()[0][6]
+    assert detalle["receptor_fuera_de_lista"] is True and detalle["receptor_id"] is None
+    assert detalle["responsable_nombre"] == "Marta Ríos" and detalle["responsable_cedula"] == "52123456"
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {},
+        {"receptor_nombre": "Marta"},
+        {"receptor_cedula": "52123456"},
+        {"receptor_nombre": "Marta", "receptor_cedula": "12"},
+        {"receptor_id": RECEPTOR, "receptor_nombre": "Marta", "receptor_cedula": "52123456"},
+    ],
+)
+async def test_confirmar_exige_elegir_quien_recibe_antes_de_subir_la_firma(pool, conn, storage, kwargs):
+    _guion_comprobante(conn)
+    with pytest.raises(r.DatoInvalido):
+        await svc.confirmar(PUNTO_PDT, COMP_SALIDA, PNG, None, **kwargs)
+    assert storage.subidas == [] and conn.sql_ejecutado("update traslado_comprobantes set") == []
+
+
+@pytest.mark.parametrize(
+    "receptor",
+    [None, _receptor(activo=False), _receptor(punto_id=BVT)],
+    ids=["no existe", "inactivo", "de otro punto"],
+)
+async def test_confirmar_con_un_receptor_que_no_es_del_punto_o_esta_inactivo_falla(pool, conn, storage, receptor):
+    _guion_comprobante(conn)
+    conn._reglas = [x for x in conn._reglas if x[1] != "from receptores_punto where id"]
+    conn.responder("fetchrow", "from receptores_punto where id", receptor)
+    with pytest.raises(r.DatoInvalido):
+        await svc.confirmar(PUNTO_PDT, COMP_SALIDA, PNG, None, receptor_id=RECEPTOR)
+    assert storage.subidas == []
+
+
+async def test_el_receptor_se_valida_contra_el_punto_del_comprobante_no_el_del_usuario(pool, conn, storage):
+    """Un admin confirma por el punto del comprobante: el receptor debe ser de ESE punto."""
+    _guion_comprobante(conn, _comprobante(punto_id=PDT), receptor=_receptor(punto_id=PDT))
+    await svc.confirmar(ADMIN, COMP_SALIDA, PNG, None, receptor_id=RECEPTOR)
+    assert len(conn.sql_ejecutado("update traslado_comprobantes set")) == 1
+
+
+async def test_confirmar_si_el_receptor_se_borra_en_medio_borra_la_firma_y_es_422(pool, conn, storage):
+    _guion_comprobante(conn)
+    conn._reglas = [x for x in conn._reglas if x[1] != "update traslado_comprobantes set"]
+    conn.responder("fetchrow", "update traslado_comprobantes set", asyncpg.ForeignKeyViolationError("fk"))
+    with pytest.raises(r.DatoInvalido):
+        await svc.confirmar(PUNTO_PDT, COMP_SALIDA, PNG, None, receptor_id=RECEPTOR)
+    assert storage.borradas == [storage.subidas[0][0]]
 
 
 async def test_confirmar_de_otro_punto_es_404_y_de_la_encargada_es_403(pool, conn, storage):
@@ -525,7 +599,7 @@ async def test_confirmar_de_otro_punto_es_404_y_de_la_encargada_es_403(pool, con
 async def test_confirmar_uno_ya_confirmado_es_409(pool, conn, storage):
     _guion_comprobante(conn, _comprobante("confirmado"))
     with pytest.raises(r.EstadoNoPermitido):
-        await svc.confirmar(PUNTO_PDT, COMP_SALIDA, PNG, None)
+        await svc.confirmar(PUNTO_PDT, COMP_SALIDA, PNG, None, receptor_id=RECEPTOR)
 
 
 async def test_confirmar_si_alguien_se_adelanta_borra_la_firma_subida(pool, conn, storage):
@@ -533,7 +607,7 @@ async def test_confirmar_si_alguien_se_adelanta_borra_la_firma_subida(pool, conn
     conn._reglas = [x for x in conn._reglas if x[1] != "update traslado_comprobantes set"]
     conn.responder("fetchrow", "update traslado_comprobantes set", None)  # el guard estado='pendiente' no encontro fila
     with pytest.raises(r.EstadoNoPermitido):
-        await svc.confirmar(PUNTO_PDT, COMP_SALIDA, PNG, None)
+        await svc.confirmar(PUNTO_PDT, COMP_SALIDA, PNG, None, receptor_id=RECEPTOR)
     assert storage.borradas == [storage.subidas[0][0]]
 
 
@@ -546,7 +620,7 @@ async def test_confirmar_comprobante_inexistente_es_404(pool, conn, storage):
 async def test_salida_e_ingreso_se_confirman_en_cualquier_orden(pool, conn, storage):
     """Cada comprobante es independiente: confirmar el ingreso no pide la salida."""
     _guion_comprobante(conn, _comprobante(tipo="ingreso", punto_id=PDT))
-    await svc.confirmar(PUNTO_PDT, COMP_INGRESO, PNG, None)
+    await svc.confirmar(PUNTO_PDT, COMP_INGRESO, PNG, None, receptor_id=RECEPTOR)
     assert conn.eventos_log() == ["traslado_comprobante_confirmado"]
     assert not any("tipo = 'salida'" in c[1] for c in conn.llamadas)
 
@@ -556,11 +630,14 @@ async def test_salida_e_ingreso_se_confirman_en_cualquier_orden(pool, conn, stor
 
 async def test_el_punto_devuelve_un_pendiente_con_motivo(pool, conn, storage):
     _guion_comprobante(conn)
-    await svc.devolver(PUNTO_PDT, COMP_SALIDA, "  Número equivocado ")
+    await svc.devolver(PUNTO_PDT, COMP_SALIDA, "  Número equivocado ", receptor_id=RECEPTOR)
     (_, sql, args) = conn.sql_ejecutado("update traslado_comprobantes set")[0]
-    assert "estado = 'devuelto'" in sql and "Número equivocado" in args and "Pedro" in args and "1234567" in args
+    assert "estado = 'devuelto'" in sql and "Número equivocado" in args and "Luis Pérez" in args and "7654321" in args
+    assert RECEPTOR in args and PUNTO_PDT.usuario["id"] in args
     assert "pendiente" in args  # el guard exige el estado que se leyo
     assert conn.eventos_log() == ["traslado_comprobante_devuelto"]
+    detalle = conn.inserts_log()[0][6]
+    assert detalle["receptor_id"] == RECEPTOR and detalle["receptor_fuera_de_lista"] is False
     assert storage.subidas == [] and storage.borradas == []
 
 
@@ -568,17 +645,43 @@ async def test_devolver_un_pendiente_exige_motivo(pool, conn, storage):
     _guion_comprobante(conn)
     for motivo in ("", "   ", None, "x" * 501):
         with pytest.raises(r.DatoInvalido):
-            await svc.devolver(PUNTO_PDT, COMP_SALIDA, motivo)
+            await svc.devolver(PUNTO_PDT, COMP_SALIDA, motivo, receptor_id=RECEPTOR)
     assert conn.sql_ejecutado("update traslado_comprobantes set") == []
+
+
+async def test_devolver_un_pendiente_con_otra_persona(pool, conn, storage):
+    _guion_comprobante(conn)
+    await svc.devolver(PUNTO_PDT, COMP_SALIDA, "No llegó", **OTRA_PERSONA)
+    (_, _, args) = conn.sql_ejecutado("update traslado_comprobantes set")[0]
+    assert "Marta Ríos" in args and "52123456" in args and args[-1] is None
+    detalle = conn.inserts_log()[0][6]
+    assert detalle["receptor_fuera_de_lista"] is True and detalle["receptor_id"] is None
+
+
+@pytest.mark.parametrize("perfil", [PUNTO_PDT, ADMIN], ids=["punto", "admin"])
+async def test_devolver_un_pendiente_exige_elegir_quien_recibe(pool, conn, storage, perfil):
+    _guion_comprobante(conn)
+    for kwargs in ({}, {"receptor_nombre": "Marta"}, {"receptor_id": RECEPTOR, **OTRA_PERSONA}):
+        with pytest.raises(r.DatoInvalido):
+            await svc.devolver(perfil, COMP_SALIDA, "No llegó", **kwargs)
+    assert conn.sql_ejecutado("update traslado_comprobantes set") == []
+
+
+async def test_devolver_con_un_receptor_de_otro_punto_falla(pool, conn, storage):
+    _guion_comprobante(conn, receptor=_receptor(punto_id=BVT))
+    with pytest.raises(r.DatoInvalido):
+        await svc.devolver(PUNTO_PDT, COMP_SALIDA, "No llegó", receptor_id=RECEPTOR)
 
 
 async def test_la_encargada_devuelve_un_confirmado_aunque_no_tenga_cedula(pool, conn, storage):
     confirmado = _comprobante("confirmado", firma_ruta=f"traslados-firmas/{COMP_SALIDA}/f.png")
     _guion_comprobante(conn, confirmado)
     sin_cedula = perfil_de(usuario(cedula=None))
-    await svc.devolver(sin_cedula, COMP_SALIDA, "Firma ilegible")
+    await svc.devolver(sin_cedula, COMP_SALIDA, "Firma ilegible")  # sin receptor: no aplica a un confirmado
     (_, sql, args) = conn.sql_ejecutado("update traslado_comprobantes set")[0]
-    assert "confirmado" in args
+    assert "confirmado" in args and args[-1] is None  # receptor_id null
+    assert conn.sql_ejecutado("from receptores_punto") == []
+    assert "receptor_fuera_de_lista" not in conn.inserts_log()[0][6]
     assert "firma_ruta = null" in sql
     # La firma anterior queda en el log (no se borra de Storage: es evidencia).
     assert conn.inserts_log()[0][6]["firma_ruta_anterior"] == f"traslados-firmas/{COMP_SALIDA}/f.png"
@@ -602,7 +705,7 @@ async def test_devolver_si_alguien_se_adelanta_es_409(pool, conn, storage):
     conn._reglas = [x for x in conn._reglas if x[1] != "update traslado_comprobantes set"]
     conn.responder("fetchrow", "update traslado_comprobantes set", None)
     with pytest.raises(r.EstadoNoPermitido):
-        await svc.devolver(PUNTO_PDT, COMP_SALIDA, "motivo")
+        await svc.devolver(PUNTO_PDT, COMP_SALIDA, "motivo", receptor_id=RECEPTOR)
     assert conn.eventos_log() == []
 
 
@@ -625,7 +728,7 @@ async def test_reenviar_sin_cambios_vuelve_a_pendiente_y_limpia_la_resolucion(po
     await svc.reenviar(ENCARGADA, COMP_SALIDA)
     (_, sql, args) = conn.sql_ejecutado("update traslado_comprobantes set")[0]
     assert "estado = 'pendiente'" in sql and "estado = 'devuelto'" in sql
-    for limpio in ("responsable_nombre = null", "firma_ruta = null", "motivo_devolucion = null", "observacion = null"):
+    for limpio in ("responsable_nombre = null", "firma_ruta = null", "motivo_devolucion = null", "observacion = null", "receptor_id = null"):
         assert limpio in sql
     assert conn.eventos_log() == ["traslado_comprobante_reenviado"]
     assert storage.subidas == []
@@ -825,4 +928,4 @@ async def test_asyncpg_no_se_traga_errores_ajenos(pool, conn, storage):
     conn._reglas = [x for x in conn._reglas if x[1] != "update traslado_comprobantes set"]
     conn.responder("fetchrow", "update traslado_comprobantes set", asyncpg.DataError("boom"))
     with pytest.raises(asyncpg.DataError):
-        await svc.devolver(PUNTO_PDT, COMP_SALIDA, "motivo")
+        await svc.devolver(PUNTO_PDT, COMP_SALIDA, "motivo", receptor_id=RECEPTOR)

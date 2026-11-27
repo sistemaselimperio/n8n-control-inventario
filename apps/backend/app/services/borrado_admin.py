@@ -171,6 +171,7 @@ _CHEQUEOS_PUNTO: list[Chequeo] = [
         "select 1 from traslados where origen_punto_id = $1::uuid or destino_punto_id = $1::uuid",
     ),
     ("usuarios del dashboard asignados", "select 1 from usuarios_dashboard where punto_id = $1::uuid"),
+    ("receptores de traslados", "select 1 from receptores_punto where punto_id = $1::uuid"),
     # Va al final: borrar un punto con usuarios fallaria por FK aunque no
     # tuvieran historial; se pide eliminarlos (o desactivar el punto) antes.
     ("usuarios asignados", "select 1 from usuarios_punto where punto_id = $1::uuid"),

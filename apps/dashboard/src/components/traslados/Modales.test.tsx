@@ -16,6 +16,7 @@ const api = vi.hoisted(() => ({
   reenviarComprobante: vi.fn(),
   actualizarTraslado: vi.fn(),
   fetchComprobante: vi.fn(),
+  fetchReceptoresPunto: vi.fn(),
 }));
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -79,86 +80,188 @@ const firmar = () => {
   fireEvent.pointerUp(l, { pointerId: 1 });
 };
 
+const receptores = [
+  { id: "r1", nombre: "Luis Pérez", cedula: "1234567" },
+  { id: "r2", nombre: "Ana Gil", cedula: "7654321" },
+];
+
+const conSwr = (ui: React.ReactNode) => (
+  <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>{ui}</SWRConfig>
+);
+
+// Elige "Otra persona" y llena nombre y cedula.
+const escribirOtraPersona = async (nombre = "Marta Ríos", cedula = "52.123.456") => {
+  await userEvent.selectOptions(await screen.findByLabelText("Quién recibe"), "Otra persona");
+  await userEvent.type(screen.getByLabelText("Nombre de quien recibe"), nombre);
+  await userEvent.type(screen.getByLabelText("Cédula de quien recibe"), cedula);
+};
+
 describe("ModalConfirmarComprobante", () => {
-  const usuario = { nombre: "Laura Perez", cedula: "1002003004" };
-  const montar = (u = usuario) => {
+  beforeEach(() => {
+    api.fetchReceptoresPunto.mockResolvedValue(receptores);
+  });
+  const montar = () => {
     const onHecho = vi.fn();
     const onCerrar = vi.fn();
-    render(<ModalConfirmarComprobante comprobante={comp()} usuario={u} onCerrar={onCerrar} onHecho={onHecho} />);
+    render(conSwr(<ModalConfirmarComprobante comprobante={comp()} onCerrar={onCerrar} onHecho={onHecho} />));
     return { onHecho, onCerrar };
   };
+  const botonConfirmar = () => screen.getByRole("button", { name: "Confirmar recepción" });
 
-  it("muestra quien firma: nombre y cedula del usuario de la sesion", () => {
+  it("lista los receptores activos del punto del comprobante", async () => {
     montar();
-    expect(screen.getByText("Laura Perez")).toBeInTheDocument();
-    expect(screen.getByText(/C\.C\. 1002003004/)).toBeInTheDocument();
+    const selector = await screen.findByLabelText("Quién recibe");
+    await waitFor(() => expect(within(selector).getAllByRole("option")).toHaveLength(4));
+    expect(api.fetchReceptoresPunto).toHaveBeenCalledWith("p1");
+    expect(within(selector).getByRole("option", { name: /Luis Pérez/ })).toBeInTheDocument();
+    expect(within(selector).getByRole("option", { name: "Otra persona" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Nombre de quien recibe")).toBeNull();
   });
 
-  it("sin cedula igual deja firmar y confirmar: basta con la sesion del punto", async () => {
-    montar({ nombre: "Punto Susa", cedula: "" });
-    expect(screen.queryByText(/C\.C\./)).toBeNull();
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByLabelText("Área de firma")).toBeInTheDocument();
-    firmar();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Confirmar recepción" })).toBeEnabled());
-  });
-
-  it("el boton queda deshabilitado hasta que haya un trazo", async () => {
+  it("el boton queda deshabilitado hasta que haya firma Y quien recibe", async () => {
     montar();
-    const boton = screen.getByRole("button", { name: "Confirmar recepción" });
-    expect(boton).toBeDisabled();
+    const selector = await screen.findByLabelText("Quién recibe");
+    await waitFor(() => expect(within(selector).getAllByRole("option")).toHaveLength(4));
+    expect(botonConfirmar()).toBeDisabled();
     firmar();
-    await waitFor(() => expect(boton).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Limpiar" })).toBeEnabled());
+    expect(botonConfirmar()).toBeDisabled(); // falta elegir quien recibe
+    await userEvent.selectOptions(selector, "r1");
+    await waitFor(() => expect(botonConfirmar()).toBeEnabled());
     await userEvent.click(screen.getByRole("button", { name: "Limpiar" }));
-    await waitFor(() => expect(boton).toBeDisabled());
+    await waitFor(() => expect(botonConfirmar()).toBeDisabled());
   });
 
-  it("envia la firma PNG y la observacion, avisa y avisa al padre", async () => {
+  it("envia la firma PNG, la observacion y el receptor elegido", async () => {
     api.confirmarComprobante.mockResolvedValue(comp({ estado: "confirmado" }));
     const { onHecho } = montar();
+    await userEvent.selectOptions(await screen.findByLabelText("Quién recibe"), "r2");
     firmar();
     await userEvent.type(screen.getByLabelText(/Observación/), "Todo completo");
-    await userEvent.click(screen.getByRole("button", { name: "Confirmar recepción" }));
+    await userEvent.click(botonConfirmar());
     await waitFor(() => expect(api.confirmarComprobante).toHaveBeenCalled());
-    const [id, blob, obs] = api.confirmarComprobante.mock.calls[0];
+    const [id, blob, obs, quien] = api.confirmarComprobante.mock.calls[0];
     expect(id).toBe("c1");
     expect((blob as Blob).type).toBe("image/png");
     expect(obs).toBe("Todo completo");
+    expect(quien).toEqual({ receptor_id: "r2" });
     expect(toast.success).toHaveBeenCalledWith("Recepción confirmada");
     expect(onHecho).toHaveBeenCalled();
+  });
+
+  it("otra persona pide nombre y cedula (5 a 15 digitos) antes de habilitar el boton", async () => {
+    montar();
+    await userEvent.selectOptions(await screen.findByLabelText("Quién recibe"), "Otra persona");
+    firmar();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Limpiar" })).toBeEnabled());
+    expect(botonConfirmar()).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Nombre de quien recibe"), "Marta Ríos");
+    await userEvent.type(screen.getByLabelText("Cédula de quien recibe"), "12ab");
+    expect(botonConfirmar()).toBeDisabled();
+    await userEvent.clear(screen.getByLabelText("Cédula de quien recibe"));
+    await userEvent.type(screen.getByLabelText("Cédula de quien recibe"), "52.123.456");
+    await waitFor(() => expect(botonConfirmar()).toBeEnabled());
+  });
+
+  it("confirma con otra persona mandando nombre y cedula normalizada", async () => {
+    api.confirmarComprobante.mockResolvedValue(comp({ estado: "confirmado" }));
+    montar();
+    await escribirOtraPersona();
+    firmar();
+    await waitFor(() => expect(botonConfirmar()).toBeEnabled());
+    await userEvent.click(botonConfirmar());
+    await waitFor(() => expect(api.confirmarComprobante).toHaveBeenCalled());
+    expect(api.confirmarComprobante.mock.calls[0][3]).toEqual({
+      receptor_nombre: "Marta Ríos",
+      receptor_cedula: "52123456",
+    });
+  });
+
+  it("sin receptores registrados avisa y deja usar otra persona", async () => {
+    api.fetchReceptoresPunto.mockResolvedValue([]);
+    montar();
+    expect(await screen.findByText(/no tiene receptores registrados/)).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Quién recibe"), "Otra persona");
+    expect(screen.getByLabelText("Nombre de quien recibe")).toBeInTheDocument();
+  });
+
+  it("si la lista no carga muestra el error y deja usar otra persona", async () => {
+    api.fetchReceptoresPunto.mockRejectedValue(new Error("Sin conexión"));
+    montar();
+    expect(await screen.findByText(/No se pudo cargar la lista de receptores/)).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Quién recibe"), "Otra persona");
+    expect(screen.getByLabelText("Cédula de quien recibe")).toBeInTheDocument();
   });
 
   it("un error del backend se muestra dentro del modal y no cierra", async () => {
     api.confirmarComprobante.mockRejectedValue(new Error("Ya fue confirmado"));
     const { onHecho } = montar();
+    await userEvent.selectOptions(await screen.findByLabelText("Quién recibe"), "r1");
     firmar();
-    await userEvent.click(screen.getByRole("button", { name: "Confirmar recepción" }));
+    await waitFor(() => expect(botonConfirmar()).toBeEnabled());
+    await userEvent.click(botonConfirmar());
     expect(await screen.findByText("Ya fue confirmado")).toBeInTheDocument();
     expect(onHecho).not.toHaveBeenCalled();
   });
 });
 
 describe("ModalDevolver", () => {
-  it("exige un motivo y limita a 500 caracteres", async () => {
+  beforeEach(() => {
+    api.fetchReceptoresPunto.mockResolvedValue(receptores);
+  });
+  const montar = (c = comp(), onHecho = vi.fn()) =>
+    render(conSwr(<ModalDevolver comprobante={c} onCerrar={() => {}} onHecho={onHecho} />));
+
+  it("un pendiente exige motivo (maximo 500) y quien recibe", async () => {
     api.devolverComprobante.mockResolvedValue(comp({ estado: "devuelto" }));
     const onHecho = vi.fn();
-    render(<ModalDevolver comprobante={comp()} onCerrar={() => {}} onHecho={onHecho} />);
+    montar(comp(), onHecho);
     const boton = screen.getByRole("button", { name: "Devolver" });
     expect(boton).toBeDisabled();
     expect(screen.getByLabelText(/Motivo/)).toHaveAttribute("maxlength", "500");
     await userEvent.type(screen.getByLabelText(/Motivo/), "   ");
     expect(boton).toBeDisabled();
     await userEvent.type(screen.getByLabelText(/Motivo/), "Cantidad errada");
+    expect(boton).toBeDisabled(); // falta elegir quien recibe
+    await userEvent.selectOptions(await screen.findByLabelText("Quién recibe"), "r1");
+    await waitFor(() => expect(boton).toBeEnabled());
     await userEvent.click(boton);
-    await waitFor(() => expect(api.devolverComprobante).toHaveBeenCalledWith("c1", "Cantidad errada"));
+    await waitFor(() =>
+      expect(api.devolverComprobante).toHaveBeenCalledWith("c1", "Cantidad errada", { receptor_id: "r1" })
+    );
     expect(toast.success).toHaveBeenCalledWith("Comprobante devuelto");
     expect(onHecho).toHaveBeenCalled();
   });
 
+  it("un pendiente tambien se puede devolver con otra persona", async () => {
+    api.devolverComprobante.mockResolvedValue(comp({ estado: "devuelto" }));
+    montar();
+    await userEvent.type(screen.getByLabelText(/Motivo/), "No llegó");
+    await escribirOtraPersona();
+    await userEvent.click(screen.getByRole("button", { name: "Devolver" }));
+    await waitFor(() =>
+      expect(api.devolverComprobante).toHaveBeenCalledWith("c1", "No llegó", {
+        receptor_nombre: "Marta Ríos",
+        receptor_cedula: "52123456",
+      })
+    );
+  });
+
+  it("un confirmado (lo devuelve la encargada) no pide receptor ni lo carga", async () => {
+    api.devolverComprobante.mockResolvedValue(comp({ estado: "devuelto" }));
+    montar(comp({ estado: "confirmado" }));
+    expect(screen.queryByLabelText("Quién recibe")).toBeNull();
+    await userEvent.type(screen.getByLabelText(/Motivo/), "Firma ilegible");
+    await userEvent.click(screen.getByRole("button", { name: "Devolver" }));
+    await waitFor(() => expect(api.devolverComprobante).toHaveBeenCalledWith("c1", "Firma ilegible", undefined));
+    expect(api.fetchReceptoresPunto).not.toHaveBeenCalled();
+  });
+
   it("muestra el error del backend", async () => {
     api.devolverComprobante.mockRejectedValue(new Error("No permitido"));
-    render(<ModalDevolver comprobante={comp()} onCerrar={() => {}} onHecho={() => {}} />);
+    montar();
     await userEvent.type(screen.getByLabelText(/Motivo/), "x");
+    await userEvent.selectOptions(await screen.findByLabelText("Quién recibe"), "r1");
     await userEvent.click(screen.getByRole("button", { name: "Devolver" }));
     expect(await screen.findByText("No permitido")).toBeInTheDocument();
   });

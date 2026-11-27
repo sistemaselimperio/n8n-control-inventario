@@ -141,7 +141,10 @@ export function AccionEliminar({
   onHecho,
   deshabilitado,
   titulo,
+  detalle,
 }: {
+  // Aviso extra bajo "Esta acción no se puede deshacer".
+  detalle?: string;
   nombre: string;
   // Aviso al borrar, ej. "Sede eliminada".
   exito: string;
@@ -241,6 +244,7 @@ export function AccionEliminar({
                   ¿Eliminar {nombre}?
                 </h3>
                 <p className="text-sm text-muted">Esta acción no se puede deshacer.</p>
+                {detalle ? <p className="text-sm text-muted">{detalle}</p> : null}
                 {error ? (
                   <p role="alert" className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger-fg">
                     {error}

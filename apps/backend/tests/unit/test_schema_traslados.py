@@ -116,3 +116,31 @@ def test_nombres_nuevos_no_chocan_con_las_tablas_del_modulo_anterior():
     tablas = re.findall(r"create table if not exists (\w+)", _SCHEMA)
     assert len(tablas) == len(set(tablas))
     assert {"traslados", "traslado_comprobantes", "traslados_puntos", "traslado_punto_items"} <= set(tablas)
+
+
+# --------------------------- receptores por punto ---------------------------
+
+
+def test_receptores_punto_tiene_su_tabla_idempotente_y_unico_por_punto_y_cedula():
+    assert "create table if not exists receptores_punto (" in _SCHEMA
+    bloque = _SCHEMA.split("create table if not exists receptores_punto (")[1].split(");")[0]
+    assert "id uuid primary key default gen_random_uuid()" in bloque
+    assert "punto_id uuid not null references puntos(id)" in bloque
+    assert "nombre text not null" in bloque and "cedula text not null" in bloque
+    assert "activo boolean not null default true" in bloque
+    assert "creado_at timestamptz default now()" in bloque
+    assert "unique (punto_id, cedula)" in bloque
+
+
+def test_el_comprobante_enlaza_al_receptor_y_el_borrado_del_receptor_no_pierde_historial():
+    assert re.search(
+        r"alter table traslado_comprobantes\s+add column if not exists receptor_id uuid "
+        r"references receptores_punto\(id\) on delete set null",
+        _SCHEMA,
+    )
+    # La tabla se crea antes de que el comprobante la referencie.
+    assert _SCHEMA.index("create table if not exists receptores_punto") < _SCHEMA.index("add column if not exists receptor_id")
+
+
+def test_receptores_punto_no_viaja_por_realtime():
+    assert "add table receptores_punto" not in _SCHEMA

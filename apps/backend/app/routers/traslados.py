@@ -12,7 +12,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 
-from app.models.traslado import DevolverRequest, TrasladoEditar
+from app.models.traslado import DevolverRequest, TrasladoEditar, receptor_id_valido
+from app.services import receptores_punto
 from app.services import traslados as servicio
 from app.services.permisos_traslados import (
     PerfilTraslados,
@@ -86,6 +87,16 @@ async def puntos(perfil: PerfilTraslados = Depends(perfil_traslados)) -> list[di
     """Puntos activos para los selectores: [{id, nombre, codigo, es_interna}].
     Un usuario de punto solo recibe el suyo."""
     return await servicio.puntos_para_traslados(perfil)
+
+
+@router.get("/puntos/{punto_id}/receptores")
+async def receptores_del_punto(punto_id: UUID, perfil: PerfilTraslados = Depends(perfil_traslados)) -> list[dict]:
+    """Receptores activos del punto para el modal de confirmar/devolver:
+    [{id, nombre, cedula}]. Un perfil de otro punto recibe 404."""
+    try:
+        return await receptores_punto.listar_activos_de_punto(perfil, str(punto_id))
+    except _ERRORES as exc:
+        raise _http(exc) from exc
 
 
 @router.get("/comprobantes")
@@ -218,14 +229,30 @@ async def confirmar(
     comprobante_id: UUID,
     firma: UploadFile = File(...),
     observacion: str | None = Form(default=None),
+    receptor_id: str | None = Form(default=None),
+    receptor_nombre: str | None = Form(default=None),
+    receptor_cedula: str | None = Form(default=None),
     perfil: PerfilTraslados = Depends(requiere_escritura_traslados),
 ) -> dict:
     """Confirma un comprobante pendiente: multipart con `firma` (imagen PNG/JPG/WebP,
-    obligatoria) y `observacion` (opcional). El responsable es el usuario de la
-    sesion (requiere cedula configurada)."""
+    obligatoria), `observacion` (opcional) y quien recibe: `receptor_id` (de la
+    lista del punto) O `receptor_nombre` + `receptor_cedula` (otra persona);
+    exactamente uno de los dos modos."""
+    try:
+        receptor = receptor_id_valido(receptor_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     contenido = await _leer(firma, MAX_BYTES_FIRMA)
     try:
-        return await servicio.confirmar(perfil, str(comprobante_id), contenido, _texto(observacion))
+        return await servicio.confirmar(
+            perfil,
+            str(comprobante_id),
+            contenido,
+            _texto(observacion),
+            receptor_id=receptor,
+            receptor_nombre=_texto(receptor_nombre),
+            receptor_cedula=_texto(receptor_cedula),
+        )
     except _ERRORES as exc:
         raise _http(exc) from exc
 
@@ -235,9 +262,17 @@ async def devolver(
     comprobante_id: UUID, payload: DevolverRequest, perfil: PerfilTraslados = Depends(requiere_escritura_traslados)
 ) -> dict:
     """Devuelve un comprobante con `motivo` obligatorio (JSON). El punto devuelve
-    pendientes; la encargada tambien los confirmados."""
+    pendientes (y entonces indica quien recibe: `receptor_id` o `receptor_nombre`
+    + `receptor_cedula`); la encargada tambien los confirmados (sin receptor)."""
     try:
-        return await servicio.devolver(perfil, str(comprobante_id), payload.motivo)
+        return await servicio.devolver(
+            perfil,
+            str(comprobante_id),
+            payload.motivo,
+            receptor_id=payload.receptor_id,
+            receptor_nombre=payload.receptor_nombre,
+            receptor_cedula=payload.receptor_cedula,
+        )
     except _ERRORES as exc:
         raise _http(exc) from exc
 

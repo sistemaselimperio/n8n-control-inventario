@@ -7,6 +7,8 @@ import {
   CLAVE_TRASLADOS,
   CEDULA_FIRMA_VALIDA,
   etiquetaPuntoOpcion,
+  OTRA_PERSONA,
+  quienRecibe,
 } from "./traslados";
 import type { Comprobante } from "./api";
 import type { UsuarioDashboard } from "./sesion";
@@ -124,5 +126,25 @@ describe("textos y utilidades", () => {
     expect(filtro([CLAVE_TRASLADOS, "x"])).toBe(true);
     expect(filtro(["entregas-tabla"])).toBe(false);
     expect(filtro("entregas")).toBe(false);
+  });
+});
+
+
+describe("quienRecibe", () => {
+  it("sin eleccion no hay receptor", () => {
+    expect(quienRecibe({ receptorId: "", nombre: "", cedula: "" })).toBeNull();
+  });
+
+  it("un receptor de la lista viaja por su id e ignora lo escrito", () => {
+    expect(quienRecibe({ receptorId: "r1", nombre: "x", cedula: "y" })).toEqual({ receptor_id: "r1" });
+  });
+
+  it("otra persona exige nombre y cedula validos y normaliza la cedula", () => {
+    const base = { receptorId: OTRA_PERSONA, nombre: "  Marta Ríos ", cedula: " 52.123-456 " };
+    expect(quienRecibe(base)).toEqual({ receptor_nombre: "Marta Ríos", receptor_cedula: "52123456" });
+    expect(quienRecibe({ ...base, nombre: "   " })).toBeNull();
+    expect(quienRecibe({ ...base, cedula: "1234" })).toBeNull();
+    expect(quienRecibe({ ...base, cedula: "12a4567" })).toBeNull();
+    expect(quienRecibe({ ...base, cedula: "" })).toBeNull();
   });
 });

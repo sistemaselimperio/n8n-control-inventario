@@ -42,8 +42,41 @@ class TrasladoEditar(BaseModel):
         return _uuid_o_none(v)
 
 
+def _texto_o_none(valor: str | None) -> str | None:
+    valor = (valor or "").strip()
+    return valor or None
+
+
+def receptor_id_valido(valor: str | None) -> str | None:
+    """UUID del receptor o None si no se indico; ValueError si no es un UUID."""
+    valor = _texto_o_none(valor)
+    if valor is None:
+        return None
+    try:
+        return str(UUID(valor))
+    except ValueError:
+        raise ValueError("El identificador del receptor no es válido") from None
+
+
 class DevolverRequest(BaseModel):
+    """Motivo y, para un comprobante pendiente, quien recibe: `receptor_id` (de
+    la lista del punto) o `receptor_nombre` + `receptor_cedula` (otra persona).
+    Que sea exactamente uno de los dos lo valida el servicio."""
+
     motivo: str = Field(min_length=1, max_length=MAX_MOTIVO)
+    receptor_id: str | None = None
+    receptor_nombre: str | None = Field(default=None, max_length=200)
+    receptor_cedula: str | None = Field(default=None, max_length=50)
+
+    @field_validator("receptor_id")
+    @classmethod
+    def _receptor_id(cls, v: str | None) -> str | None:
+        return receptor_id_valido(v)
+
+    @field_validator("receptor_nombre", "receptor_cedula")
+    @classmethod
+    def _receptor_texto(cls, v: str | None) -> str | None:
+        return _texto_o_none(v)
 
     @field_validator("motivo")
     @classmethod

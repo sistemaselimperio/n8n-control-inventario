@@ -18,6 +18,7 @@ const api = vi.hoisted(() => ({
   confirmarComprobante: vi.fn(),
   reenviarComprobante: vi.fn(),
   actualizarTraslado: vi.fn(),
+  fetchReceptoresPunto: vi.fn(),
 }));
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -239,7 +240,7 @@ describe("admin y encargada", () => {
     await userEvent.click(within(fila("Comprobantes", "FV 200")).getByRole("button", { name: "Devolver" }));
     await userEvent.type(screen.getByLabelText(/Motivo/), "Firma ilegible");
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Devolver" }));
-    await waitFor(() => expect(api.devolverComprobante).toHaveBeenCalledWith("c2", "Firma ilegible"));
+    await waitFor(() => expect(api.devolverComprobante).toHaveBeenCalledWith("c2", "Firma ilegible", undefined));
   });
 
   it("Eliminar pide confirmacion en un modal y borra el traslado completo", async () => {
@@ -347,13 +348,14 @@ describe("usuario de punto", () => {
     expect(within(confirmado).queryByRole("button", { name: "Confirmar" })).toBeNull();
   });
 
-  it("Confirmar abre el modal de firma con su nombre y cedula", async () => {
+  it("Confirmar abre el modal de firma y pide quien recibe del punto del comprobante", async () => {
+    api.fetchReceptoresPunto.mockResolvedValue([{ id: "r1", nombre: "Luis Pérez", cedula: "1234567" }]);
     montar(PUNTO);
     await esperarFila("Comprobantes", "FV 100");
     await userEvent.click(within(fila("Comprobantes", "FV 100")).getByRole("button", { name: "Confirmar" }));
     const dialogo = screen.getByRole("dialog", { name: "Confirmar recepción" });
-    expect(within(dialogo).getByText("Laura Perez")).toBeInTheDocument();
-    expect(within(dialogo).getByText(/C\.C\. 1002003004/)).toBeInTheDocument();
+    expect(await within(dialogo).findByRole("option", { name: /Luis Pérez/ })).toBeInTheDocument();
+    expect(within(dialogo).getByLabelText("Quién recibe")).toBeInTheDocument();
   });
 });
 

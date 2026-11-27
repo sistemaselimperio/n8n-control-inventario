@@ -807,6 +807,26 @@ create unique index if not exists traslado_comprobantes_traslado_tipo_key
 create index if not exists idx_traslado_comprobantes_punto_estado
     on traslado_comprobantes (punto_id, estado, creado_at desc);
 
+-- Receptores por punto: las personas que reciben traslados en cada punto (el
+-- punto entra con UN usuario compartido, asi que al confirmar o devolver se
+-- elige quien recibe; ver app/services/receptores_punto.py). La cedula se guarda
+-- solo con digitos. Una persona puede estar en varios puntos. No viaja por
+-- Realtime. Al confirmar, el comprobante COPIA nombre y cedula en
+-- responsable_nombre/responsable_cedula; receptor_id solo enlaza con la lista y
+-- pasa a null si el receptor se borra (el historial no se pierde).
+create table if not exists receptores_punto (
+    id uuid primary key default gen_random_uuid(),
+    punto_id uuid not null references puntos(id),
+    nombre text not null,
+    cedula text not null,
+    activo boolean not null default true,
+    creado_at timestamptz default now(),
+    unique (punto_id, cedula)
+);
+create index if not exists idx_receptores_punto_punto_activo on receptores_punto (punto_id, activo);
+alter table traslado_comprobantes
+    add column if not exists receptor_id uuid references receptores_punto(id) on delete set null;
+
 -- Realtime de Supabase: sin esto el dashboard no recibe push de cambios,
 -- solo podria hacer polling. Falla silenciosamente (DO block) si ya estaban
 -- agregadas o si la publicacion no existe (p.ej. Postgres self-hosted sin

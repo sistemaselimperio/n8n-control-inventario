@@ -28,7 +28,7 @@ import asyncpg
 from app.db import get_pool
 from app.models.log import EventoLog
 from app.models.traslado import MAX_MOTIVO, MAX_OBSERVACION
-from app.services import storage_evidencia
+from app.services import receptores_punto, storage_evidencia
 from app.services.logging_service import registrar_evento
 from app.services.pdf_traslado_bodega import PdfTrasladoInvalido, extraer_texto_pdf, parsear_traslado_bodega
 from app.services.permisos_traslados import PerfilTraslados
@@ -250,6 +250,7 @@ def _serializar_comprobante(fila: Any, historial: list[dict] | None = None) -> d
         "responsable_usuario_id": _s(fila["responsable_usuario_id"]),
         "responsable_nombre": fila["responsable_nombre"],
         "responsable_cedula": fila["responsable_cedula"],
+        "receptor_id": _s(fila.get("receptor_id")),
         "firma_url": _ruta_publica(fila["firma_ruta"]),
         "observacion": fila["observacion"],
         "motivo_devolucion": fila["motivo_devolucion"],
@@ -859,9 +860,21 @@ async def _anotar_archivo(pool, traslado_id: Any, ruta: str) -> None:
     )
 
 
-async def confirmar(perfil: PerfilTraslados, comprobante_id: str, firma: bytes, observacion: str | None) -> dict:
-    """El punto del comprobante lo confirma con la firma (imagen obligatoria) y
-    una observacion opcional. Responsable = el usuario de la sesion."""
+async def confirmar(
+    perfil: PerfilTraslados,
+    comprobante_id: str,
+    firma: bytes,
+    observacion: str | None,
+    *,
+    receptor_id: str | None = None,
+    receptor_nombre: str | None = None,
+    receptor_cedula: str | None = None,
+) -> dict:
+    """El punto del comprobante lo confirma con la firma (imagen obligatoria),
+    quien recibe y una observacion opcional. Quien recibe es un receptor activo
+    del punto (`receptor_id`) o "otra persona" (`receptor_nombre` + `receptor_cedula`,
+    solo se guarda en el comprobante); su nombre y cedula quedan copiados en
+    responsable_*. responsable_usuario_id sigue siendo el usuario de la sesion."""
     pool = await get_pool()
     fila = await _comprobante_visible(pool, comprobante_id, perfil)
     autorizar_accion(perfil, "confirmar", fila)
@@ -871,6 +884,9 @@ async def confirmar(perfil: PerfilTraslados, comprobante_id: str, firma: bytes, 
     if len(firma) > MAX_BYTES_FIRMA:
         raise DatoInvalido(f"La firma supera los {MAX_BYTES_FIRMA // (1024 * 1024)} MB")
     observacion = _limpiar_texto(observacion, MAX_OBSERVACION, "La observación")
+    receptor = await receptores_punto.resolver_receptor(
+        pool, str(fila["punto_id"]), receptor_id=receptor_id, nombre=receptor_nombre, cedula=receptor_cedula
+    )
 
     extension, content_type = imagen
     ruta = f"traslados-firmas/{comprobante_id}/{uuid.uuid4().hex}.{extension}"
@@ -884,17 +900,22 @@ async def confirmar(perfil: PerfilTraslados, comprobante_id: str, firma: bytes, 
             update traslado_comprobantes set
                 estado = 'confirmado', responsable_usuario_id = $2::uuid, responsable_nombre = $3,
                 responsable_cedula = $4, firma_ruta = $5, observacion = $6, motivo_devolucion = null,
-                resuelto_at = now(), actualizado_at = now()
+                receptor_id = $7::uuid, resuelto_at = now(), actualizado_at = now()
             where id = $1::uuid and estado = 'pendiente'
             returning id
             """,
             comprobante_id,
             perfil.usuario["id"],
-            perfil.usuario["nombre"],
-            perfil.usuario.get("cedula"),
+            receptor["nombre"],
+            receptor["cedula"],
             ruta,
             observacion,
+            receptor["receptor_id"],
         )
+    except asyncpg.ForeignKeyViolationError as exc:
+        # El receptor se borro justo entre la validacion y el update.
+        await storage_evidencia.borrar(ruta)
+        raise DatoInvalido("El receptor seleccionado ya no está disponible. Elige otro") from exc
     except Exception:
         await storage_evidencia.borrar(ruta)
         raise
@@ -904,44 +925,72 @@ async def confirmar(perfil: PerfilTraslados, comprobante_id: str, firma: bytes, 
     await _evento(
         EventoLog.TRASLADO_COMPROBANTE_CONFIRMADO, "traslado_comprobante", comprobante_id, perfil, "ok",
         {"numero": fila["numero"], "tipo": fila["tipo"], "firma_ruta": ruta, "observacion": observacion,
-         "responsable_cedula": perfil.usuario.get("cedula")},
+         "responsable_nombre": receptor["nombre"], "responsable_cedula": receptor["cedula"],
+         "receptor_id": receptor["receptor_id"], "receptor_fuera_de_lista": receptor["fuera_de_lista"]},
         sede_id=str(fila["punto_id"]),
     )
     return await detalle_comprobante(perfil, comprobante_id)
 
 
-async def devolver(perfil: PerfilTraslados, comprobante_id: str, motivo: str | None) -> dict:
+async def devolver(
+    perfil: PerfilTraslados,
+    comprobante_id: str,
+    motivo: str | None,
+    *,
+    receptor_id: str | None = None,
+    receptor_nombre: str | None = None,
+    receptor_cedula: str | None = None,
+) -> dict:
     """Devuelve un comprobante con motivo obligatorio: el punto uno pendiente,
     la encargada uno ya confirmado. La firma anterior queda en el log (y en
-    Storage), no se borra."""
+    Storage), no se borra. Cuando se resuelve un PENDIENTE (lo hace el punto)
+    tambien hay que indicar quien recibe, igual que al confirmar; al devolver
+    uno confirmado el responsable es quien lo devuelve y no se pide receptor."""
     pool = await get_pool()
     fila = await _comprobante_visible(pool, comprobante_id, perfil)
     autorizar_accion(perfil, "devolver", fila)
     motivo = _limpiar_texto(motivo, MAX_MOTIVO, "El motivo")
     if motivo is None:
         raise DatoInvalido("El motivo de la devolución es obligatorio")
-    actualizado = await pool.fetchrow(
-        """
-        update traslado_comprobantes set
-            estado = 'devuelto', responsable_usuario_id = $2::uuid, responsable_nombre = $3,
-            responsable_cedula = $4, firma_ruta = null, observacion = null, motivo_devolucion = $5,
-            resuelto_at = now(), actualizado_at = now()
-        where id = $1::uuid and estado = $6
-        returning id
-        """,
-        comprobante_id,
-        perfil.usuario["id"],
-        perfil.usuario["nombre"],
-        perfil.usuario.get("cedula"),
-        motivo,
-        fila["estado"],
-    )
+    if fila["estado"] == "pendiente":
+        receptor = await receptores_punto.resolver_receptor(
+            pool, str(fila["punto_id"]), receptor_id=receptor_id, nombre=receptor_nombre, cedula=receptor_cedula
+        )
+        responsable_nombre, responsable_cedula = receptor["nombre"], receptor["cedula"]
+    else:
+        receptor = None
+        responsable_nombre, responsable_cedula = perfil.usuario["nombre"], perfil.usuario.get("cedula")
+    try:
+        actualizado = await pool.fetchrow(
+            """
+            update traslado_comprobantes set
+                estado = 'devuelto', responsable_usuario_id = $2::uuid, responsable_nombre = $3,
+                responsable_cedula = $4, firma_ruta = null, observacion = null, motivo_devolucion = $5,
+                receptor_id = $7::uuid, resuelto_at = now(), actualizado_at = now()
+            where id = $1::uuid and estado = $6
+            returning id
+            """,
+            comprobante_id,
+            perfil.usuario["id"],
+            responsable_nombre,
+            responsable_cedula,
+            motivo,
+            fila["estado"],
+            receptor and receptor["receptor_id"],
+        )
+    except asyncpg.ForeignKeyViolationError as exc:
+        raise DatoInvalido("El receptor seleccionado ya no está disponible. Elige otro") from exc
     if actualizado is None:
         raise EstadoNoPermitido("Otra persona resolvió este comprobante mientras tanto. Recarga la pantalla")
+    detalle = {"numero": fila["numero"], "tipo": fila["tipo"], "motivo": motivo, "estado_anterior": fila["estado"],
+               "firma_ruta_anterior": fila["firma_ruta"], "observacion_anterior": fila["observacion"]}
+    if receptor is not None:
+        detalle.update(
+            responsable_nombre=receptor["nombre"], responsable_cedula=receptor["cedula"],
+            receptor_id=receptor["receptor_id"], receptor_fuera_de_lista=receptor["fuera_de_lista"],
+        )
     await _evento(
-        EventoLog.TRASLADO_COMPROBANTE_DEVUELTO, "traslado_comprobante", comprobante_id, perfil, "ok",
-        {"numero": fila["numero"], "tipo": fila["tipo"], "motivo": motivo, "estado_anterior": fila["estado"],
-         "firma_ruta_anterior": fila["firma_ruta"], "observacion_anterior": fila["observacion"]},
+        EventoLog.TRASLADO_COMPROBANTE_DEVUELTO, "traslado_comprobante", comprobante_id, perfil, "ok", detalle,
         sede_id=str(fila["punto_id"]),
     )
     return await detalle_comprobante(perfil, comprobante_id)
@@ -996,8 +1045,9 @@ async def reenviar(
                     """
                     update traslado_comprobantes set
                         numero = $2, punto_id = $3::uuid, estado = 'pendiente', responsable_usuario_id = null,
-                        responsable_nombre = null, responsable_cedula = null, firma_ruta = null,
-                        observacion = null, motivo_devolucion = null, resuelto_at = null, actualizado_at = now()
+                        responsable_nombre = null, responsable_cedula = null, receptor_id = null,
+                        firma_ruta = null, observacion = null, motivo_devolucion = null, resuelto_at = null,
+                        actualizado_at = now()
                     where id = $1::uuid and estado = 'devuelto'
                     returning id
                     """,

@@ -400,6 +400,28 @@ describe("administracion (adminFetch)", () => {
     ["resetearPinUsuarioPunto", () => api.resetearPinUsuarioPunto("u1", "9999"), "POST", "/puntos/usuarios/u1/pin", { pin: "9999" }],
     ["eliminarProducto", () => api.eliminarProducto("a/b"), "DELETE", "/productos/a%2Fb"],
     ["eliminarTipoDocumento", () => api.eliminarTipoDocumento("TB9"), "DELETE", "/tipos-documento/TB9"],
+    ["fetchReceptoresAdmin", () => api.fetchReceptoresAdmin(), "GET", "/receptores-punto?incluir_inactivos=true"],
+    [
+      "fetchReceptoresAdmin con punto",
+      () => api.fetchReceptoresAdmin("p 1"),
+      "GET",
+      "/receptores-punto?incluir_inactivos=true&punto_id=p+1",
+    ],
+    [
+      "crearReceptor",
+      () => api.crearReceptor({ punto_id: "p1", nombre: "Luis", cedula: "1234567" }),
+      "POST",
+      "/receptores-punto",
+      { punto_id: "p1", nombre: "Luis", cedula: "1234567" },
+    ],
+    [
+      "actualizarReceptor",
+      () => api.actualizarReceptor("r1", { activo: false, punto_id: "p2" }),
+      "PATCH",
+      "/receptores-punto/r1",
+      { activo: false, punto_id: "p2" },
+    ],
+    ["eliminarReceptor", () => api.eliminarReceptor("r1"), "DELETE", "/receptores-punto/r1"],
     [
       "crearTipoDocumento",
       () => api.crearTipoDocumento({ codigo: "TB9", descripcion: "Traslado" }),
@@ -651,6 +673,42 @@ describe("traslados", () => {
     expect(cuerpo.get("observacion")).toBe("Todo completo");
     await api.confirmarComprobante("c1", new Blob(["png"], { type: "image/png" }));
     expect((ultimaLlamada(f).init.body as FormData).has("observacion")).toBe(false);
+  });
+
+  it("confirmarComprobante manda quien recibe: receptor de la lista u otra persona", async () => {
+    sesion();
+    const f = mockFetch(respuestaJson({ id: "c1" }));
+    const png = new Blob(["png"], { type: "image/png" });
+    await api.confirmarComprobante("c1", png, undefined, { receptor_id: "r1" });
+    let cuerpo = ultimaLlamada(f).init.body as FormData;
+    expect(cuerpo.get("receptor_id")).toBe("r1");
+    expect(cuerpo.has("receptor_nombre")).toBe(false);
+    expect(cuerpo.has("receptor_cedula")).toBe(false);
+    await api.confirmarComprobante("c1", png, "ok", { receptor_nombre: "Marta Ríos", receptor_cedula: "52123456" });
+    cuerpo = ultimaLlamada(f).init.body as FormData;
+    expect(cuerpo.get("receptor_nombre")).toBe("Marta Ríos");
+    expect(cuerpo.get("receptor_cedula")).toBe("52123456");
+    expect(cuerpo.has("receptor_id")).toBe(false);
+  });
+
+  it("devolverComprobante manda quien recibe junto al motivo (solo si se indica)", async () => {
+    sesion();
+    const f = mockFetch(respuestaJson({ id: "c1" }));
+    await api.devolverComprobante("c1", "Cantidad errada", { receptor_id: "r1" });
+    expect(JSON.parse(ultimaLlamada(f).init.body as string)).toEqual({ motivo: "Cantidad errada", receptor_id: "r1" });
+    await api.devolverComprobante("c1", "x", { receptor_nombre: "Marta", receptor_cedula: "52123456" });
+    expect(JSON.parse(ultimaLlamada(f).init.body as string)).toEqual({
+      motivo: "x",
+      receptor_nombre: "Marta",
+      receptor_cedula: "52123456",
+    });
+  });
+
+  it("fetchReceptoresPunto pide los receptores activos del punto", async () => {
+    sesion();
+    const f = mockFetch(respuestaJson([{ id: "r1", nombre: "Luis", cedula: "1234567" }]));
+    expect(await api.fetchReceptoresPunto("p1")).toEqual([{ id: "r1", nombre: "Luis", cedula: "1234567" }]);
+    expect(ultimaLlamada(f).url).toBe(`${BASE}/traslados/puntos/p1/receptores`);
   });
 
   it("devolverComprobante envia el motivo en JSON", async () => {

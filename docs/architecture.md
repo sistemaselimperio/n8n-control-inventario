@@ -123,12 +123,24 @@ Código: `app/routers/traslados.py` (`/traslados/...`), `app/services/traslados.
    `confirmado -> devuelto` (solo encargada/admin). Salida e ingreso son independientes.
 5. Perfiles (rol + área + punto del usuario del dashboard): admin (todo); encargada = supervisor área `traslados`
    sin punto (sube, completa, envía, devuelve confirmados, corrige/reenvía, borra); usuario de punto = supervisor
-   área `traslados` con punto (solo su punto: confirma con firma obligatoria o devuelve con motivo, firmando con su
-   cédula); lectura = consulta de `traslados` y supervisor/consulta de `todo`; área `bodega` no entra. Solo sesión
+   área `traslados` con punto (solo su punto: confirma con firma obligatoria o devuelve con motivo, y en ambos casos
+   indica quién recibe, ver 7); lectura = consulta de `traslados` y supervisor/consulta de `todo`; área `bodega` no entra. Solo sesión
    Bearer, no se acepta el token legacy.
 6. Cada acción escribe un evento inmutable en `logs` (`traslado_*`, `traslado_comprobante_*`); el historial de un
    comprobante se lee de ahí. El borrado definitivo elimina filas y archivos de Storage (PDFs y firmas, listados en
    `traslados.archivos`) pero no toca `logs`.
+7. Receptores por punto: cada punto entra con UN usuario compartido, así que al confirmar o devolver un comprobante
+   **pendiente** se elige quién recibe: un receptor activo del punto (`receptor_id`, tabla `receptores_punto`,
+   `unique (punto_id, cedula)`, cédula solo dígitos 5 a 15) o "otra persona" (`receptor_nombre` + `receptor_cedula`,
+   solo queda en el comprobante, nunca se agrega a la lista); exactamente uno de los dos modos, si no 422. Nombre y
+   cédula se copian en `responsable_nombre`/`responsable_cedula` (`responsable_usuario_id` sigue siendo el usuario
+   de la sesión) y `traslado_comprobantes.receptor_id` enlaza con la lista (`on delete set null`: borrar un receptor
+   no pierde el historial). El log lleva `receptor_id` y `receptor_fuera_de_lista`. Lo que devuelve la encargada
+   sobre un confirmado no pide receptor. La lista para el modal sale de `GET /traslados/puntos/{punto_id}/receptores`
+   (solo activos); la administración está en `/creador` ("Receptores de traslados", `/receptores-punto`, admin:
+   alta, edición, desactivar y borrado definitivo; un punto con receptores no se puede borrar). Carga masiva:
+   `python -m scripts.crear_receptores <ruta.csv> [--si]` (CSV `nombre,cedula,punto` fuera del repo; sin `--si`
+   solo simula).
 
 ## 4. Viabilidad y riesgos
 
